@@ -3,22 +3,23 @@ package interpreter;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Lexer {
+    private List<String> source_code = new ArrayList<String>(); // 源代码List，按行储存
+    private int code_pos = 0; // source_code的指针
     private List<Token> tokens = new ArrayList<Token>(); // Token列表
     private List<String> key = new ArrayList<String>(); // 关键字列表
     private static List<String> var = new ArrayList<String>(); // 变量列表
     public static void main(String[] args) {
         String code; // 一行源代码
-        String code_name = "code.gmt";
+        String file_name = "code";
+        file_name = file_name + ".gmt";
         Lexer lexer = new Lexer();
         lexer.init_keyList(); // 初始化关键字列表
 
         /* 定义正则表达式 */
-        String[] regexPat = new String[5];
+        String[] regexPat = new String[6];
         regexPat[0] = "[a-zA-Z_][a-zA-Z_0-9]*"; // identifier标识符
         regexPat[1] = "";
         for(int i = 0; i < lexer.key.size(); i++) {
@@ -29,47 +30,49 @@ public class Lexer {
         regexPat[2] = "\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)|\\[|\\]|>|<|=|>=|<=|==|\\|\\||&&|\\||&|:"; // operator操作符
         regexPat[3] = "\".*\""; // str_literals字符串字面量
         regexPat[4] = "[+-]?\\d+(\\.\\d+)?"; // num_literals数字字面量
+        regexPat[5] = ",|;"; // separator分隔符
 
-        code = lexer.read(code_name);
-
-        /*
-        String regex = "";
-        regex += regexPat[0];
-        for(int i = 1; i < regexPat.length; i++)
-            regex = regex + "|" + regexPat[i];
-        System.out.println(regex);
-        Pattern p = Pattern.compile(regex);
-        Matcher m = p.matcher("[1,2,3;4,5,6;7,8,9]");
-        if (m.lookingAt()) {
-            for(int i = 0; i < 7; i++)
-                System.out.println(m.group(i));
-        }
-
-         */
-        System.out.print("输入一行代码: ");
-        Scanner s = new Scanner(System.in);
-        String tt = s.nextLine();
-        System.out.println("词法分析结果：");
-        List<String> _t_list= lexer.cut(tt, regexPat);
-        for(int i = 0; i < _t_list.size(); i++)
-            System.out.print(_t_list.get(i) + "|");
         /* 开始切割 */
-        int line_num = 0;
-        while ((code = lexer.read(code_name)) != null) {
-            // 根据正则表达式进行匹配
-            code = lexer.read(code_name);
-            lexer.cut(code, regexPat);
-        }
+        lexer.readCode(file_name); // 把文件中所有内容读到source_code里
+        int line_num = 1; // 行标
+        do {
+            /* 根据正则表达式进行匹配 */
+            code = lexer.getLineCode(); // 读一行代码
+            List<String> _t_code_list = lexer.cut(code, regexPat); // 切割
+            for(int i = 0; i < _t_code_list.size(); i++) {
+                if (Pattern.matches(regexPat[0], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.identifier, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[1], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.key, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[2], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.operator, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[3], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.str_literals, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[4], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.num_literals, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[5], _t_code_list.get(i)))
+                    lexer.addToken(Token.tokenType.separator, _t_code_list.get(i), line_num);
+                else
+                    lexer.addToken(Token.tokenType.undefined, _t_code_list.get(i), line_num);
+            }
+            lexer.addToken(Token.tokenType.end_of_line, Token.EOL, line_num); // 添加换行标志
+            line_num++;
+        } while (lexer.hasNext());
+        lexer.addToken(Token.EOF);
+
+        // test
+        lexer.save_result(file_name);
     }
 
-    // 读一行代码
-    public String read(String fileName) {
+    // 把所有的代码读到source_code中
+    public void readCode(String fileName) {
         FileReader fr = null;
         String code = null;
         try {
-            fr = new FileReader("code.gmt");
+            fr = new FileReader(fileName);
             BufferedReader reader = new BufferedReader(fr);
-            code = reader.readLine();
+            while ((code = reader.readLine()) != null)
+                this.source_code.add(code);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -83,7 +86,19 @@ public class Lexer {
                 }
             }
         }
-        return code;
+    }
+
+    // 读一行代码
+    public String getLineCode() {
+        return this.source_code.get(this.code_pos++);
+    }
+
+    // 判断是否还有代码
+    public boolean hasNext() {
+        if (this.code_pos < this.source_code.size())
+            return true;
+        else
+            return false;
     }
 
     // 初始化关键字列表
@@ -110,13 +125,14 @@ public class Lexer {
         }
     }
 
+    // 将一行代码进行分割
     public List<String> cut(String code, String[] regexPat) {
         List<String> res = new ArrayList<String>();
         code = code.trim();
         char[] _ch_code = code.toCharArray();
         StringBuilder sb = new StringBuilder();
         int pos = 0;
-        while (code != null) {
+        while (code.length() != 0) {
             // 取当前字符和下一个字符
             if (_ch_code.length > 1 && pos != _ch_code.length) {
                 String t_str = null;
@@ -184,11 +200,61 @@ public class Lexer {
         return res;
     }
 
-    public void addToken(Token t) {
-        this.tokens.add(t);
+    // 添加一个Token到Token列表中
+    public void addToken(Token.tokenType t, String content, int line) {
+        Token token = new Token(t, content, line);
+        this.tokens.add(token);
+    }
+    public void addToken(Token token) {
+        this.tokens.add(token);
     }
 
+    // 返回一个Token对象
     public Token getToken(int index) {
         return this.tokens.get(index);
+    }
+
+    // 将词法分析的结果保存到文件中
+    public void save_result(String fileName) {
+        fileName = "lexical_result_" + fileName + ".txt";
+        PrintStream printStream = null;
+        try {
+            printStream = new PrintStream(new FileOutputStream(fileName));
+            System.setOut(printStream);
+            System.out.print("-----所在行标----- | ----------Token内容---------- | ----------Token类型----------");
+            System.out.print("\n");
+            int _t1_len = 5*2 + 4 + 3;
+            int _t2_len = _t1_len + 2 + 10*2 + 7;
+            for(int i = 0; i < this.tokens.size(); i++) {
+                Token t = this.getToken(i);
+                if (t.getType() == Token.tokenType.end_of_line) {
+                    continue;
+                } else if (t.getType() == Token.tokenType.end_of_file) {
+                    break;
+                } else {
+                    // 写行标
+                    System.out.print(String.valueOf(t.getLine()));
+                    // 对齐
+                    for (int j = String.valueOf(t.getLine()).length() - 1; j < _t1_len; j++)
+                        System.out.print(" ");
+                    System.out.print("| ");
+                    // 写Token内容
+                    System.out.print(t.getContent());
+                    // 对齐
+                    for (int j = _t1_len + t.getContent().length(); j < _t2_len; j++)
+                        System.out.print(" ");
+                    System.out.print("| ");
+                    // 写Token类型
+                    System.out.print(String.valueOf(t.getType()));
+                }
+                if (i != this.tokens.size() - 2)
+                    System.out.println();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (printStream != null)
+                System.setOut(System.out);
+        }
     }
 }
