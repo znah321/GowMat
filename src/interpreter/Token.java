@@ -8,18 +8,19 @@ public class Token {
         str_literals, // 字符串字面量 "hello gowmat"
         num_literals, // 数字字面量 1 2 34.5
         undefined, // 未定义
+        separator, // 分隔符（逗号，分号）
         end_of_line, // 行末尾
         end_of_file; // 文件末尾
     }
     protected static final String EOL = "\\n"; // 行末尾
     protected static final Token EOF = new Token(tokenType.end_of_file, "EOF", -1); // 文件末尾
     private tokenType type = tokenType.undefined; // token类型
-    private String token; // token内容
+    private String content; // token内容
     private int line; // 行标
 
-    public Token(tokenType t, String token, int line) {
+    public Token(tokenType t, String content, int line) {
         this.type = t;
-        this.token = token;
+        this.content = content;
         this.line = line;
     }
 
@@ -31,12 +32,12 @@ public class Token {
         this.type = type;
     }
 
-    public String getToken() {
-        return token;
+    public String getContent() {
+        return content;
     }
 
-    public void setToken(String token) {
-        this.token = token;
+    public void setContent(String content) {
+        this.content = content;
     }
 
     public int getLine() {
