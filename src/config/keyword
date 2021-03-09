@@ -1,3 +1,4 @@
+nil
 if
 else
 else if
@@ -23,3 +24,5 @@ log2
 ln
 lg
 print
+clear
+clc

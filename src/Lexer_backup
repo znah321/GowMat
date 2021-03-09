@@ -1,0 +1,158 @@
+package interpreter;
+
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class Lexer {
+    private static List<Token> tokens = new ArrayList<Token>(); // Token列表
+    private static List<String> key = new ArrayList<String>(); // 关键字列表
+    private static List<String> var = new ArrayList<String>(); // 变量列表
+    public static void main(String[] args) {
+        String code; // 一行源代码
+        String code_name = "code.gmt";
+        Lexer lexer = new Lexer();
+        Lexer.init_keyList(); // 初始化关键字列表
+
+        /* 定义正则表达式 */
+        String[] regexPat = new String[6];
+        regexPat[0] = "[a-zA-Z_][a-zA-Z_0-9]*"; // identifier标识符
+        regexPat[1] = "";
+        for(int i = 0; i < Lexer.key.size(); i++) {
+            regexPat[1] = regexPat[1] + Lexer.key.get(i);
+            if (i != Lexer.key.size() - 1)
+                regexPat[1] += "|";
+        } // key关键字
+        regexPat[5] = "\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)|\\[|\\]|,|>|<|=|>=|<=|==|\\|\\||&&|\\||&|:"; // operator操作符
+        regexPat[3] = "\".*\""; // str_literals字符串字面量
+        regexPat[4] = "[+-]?\\d+(\\.\\d+)?"; // num_literals数字字面量
+        // ([+-]?\d+(\.\d+)?)([\s,][+-]?\d+(\.\d+)?)* 行矩阵
+        // ([;]([+-]?\d+(\.\d+)?)([\s,][+-]?\d+(\.\d+)?)*)*
+        // (([+-]?\d+(\.\d+)?)([\s,][+-]?\d+(\.\d+)?)*)([;]([+-]?\d+(\.\d+)?)([\s,][+-]?\d+(\.\d+)?))*
+        regexPat[2] = "\\[(([+-]?\\d+(\\.\\d+)?)([\\s,][+-]?\\d+(\\.\\d+)?)*)([;]([+-]?\\d+(\\.\\d+)?)([\\s,][+-]?\\d+(\\.\\d+)?)*)*\\]|\\[\\]"; // mat_literals矩阵字面量
+
+
+        code = lexer.read(code_name);
+
+
+        String regex = "";
+        regex += regexPat[0];
+        for(int i = 1; i < regexPat.length; i++)
+            regex = regex + "|" + regexPat[i];
+        System.out.println(regex);
+        Pattern p = Pattern.compile(regex);
+        Matcher m = p.matcher("[1,2,3;4,5,6;7,8,9]");
+        if (m.lookingAt()) {
+            for(int i = 0; i < 7; i++)
+                System.out.println(m.group(i));
+        }
+
+
+        /* 开始切割 */
+        int line_num = 0;
+        while ((code = lexer.read(code_name)) != null) {
+            // 根据正则表达式进行匹配
+            code = lexer.read(code_name);
+            //lexer.cut(code, regexPat);
+        }
+    }
+
+    // 读一行代码
+    public String read(String fileName) {
+        FileReader fr = null;
+        String code = null;
+        try {
+            fr = new FileReader("code.gmt");
+            BufferedReader reader = new BufferedReader(fr);
+            code = reader.readLine();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fr != null) {
+                try {
+                    fr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return code;
+    }
+
+    // 初始化关键字列表
+    public static void init_keyList() {
+        FileReader fr = null;
+        try {
+            fr = new FileReader("keyword");
+            BufferedReader reader = new BufferedReader(fr);
+            String _key;
+            while ((_key = reader.readLine()) != null)
+                Lexer.key.add(_key);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fr != null) {
+                try {
+                    fr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    /*
+    public List<String> cut(String code, String[] regexPat) {
+        List<String> res = new ArrayList<String>();
+        code = code.trim();
+
+        Pattern[] p = new Pattern[regexPat.length];
+        for(int i = 0; i < regexPat.length; i++)
+            p[i] = Pattern.compile(regexPat[i]);
+        int startIdx = 0;
+        int endIdx = code.length() - 1;
+        Matcher m = null;
+        do {
+            for(int i = 0; i < regexPat.length; i++) {
+                m = p[i].matcher(code);
+                if (m.find()) {
+                    if (m.start() == startIdx) {
+                        System.out.println(m.group());
+                        //startIdx = m.end();
+                        res.add(m.group());
+                        code = code.substring(m.end()).trim();
+                    }
+                    break;
+                }
+            }
+        } while (code != null);
+
+
+        String regex = "";
+        regex += regexPat[0];
+        for(int i = 1; i < regexPat.length; i++)
+            regex = regex + "|" + regexPat[i];
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(code);
+        matcher.useTransparentBounds(true).useAnchoringBounds(false);
+        int pos = 0;
+        int endPos = code.length();
+        while (pos < endPos) {
+            matcher.region(pos, endPos);
+            if (matcher.lookingAt())
+        }
+
+        return res;
+    }
+
+     */
+
+
+
+}

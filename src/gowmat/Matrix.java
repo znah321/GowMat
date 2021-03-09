@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 
-public class Matrix{
+public class Matrix {
     private double[][] mat;
     private int row = 0;
     private int column = 0;
@@ -93,6 +93,17 @@ public class Matrix{
         for(int i = 0; i < mat.length; i++)
             res[i] = mat[i].clone();
         return res;
+    }
+
+    /**
+     * 克隆对象
+     * @return
+     */
+    public Matrix clone() {
+        int r = this.row;
+        int c = this.column;
+        double[][] t_mat = Matrix.copy(this.mat);
+        return new Matrix(t_mat, r, c);
     }
 
     /**
