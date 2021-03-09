@@ -1,34 +1,84 @@
-package interpreter;
+package interpreter.lexer;
+
+import java.util.regex.Pattern;
 
 public class Token {
-    protected enum tokenType {
-        identifier, // 标识符：变量名之类的 a ab _aaa
-        key, // 关键字：内置的函数名，以及if、else等
-        operator, // 运算符：+ - * / % ^ .^ ./ .* ( ) [ ] , > < = >= <= || && | & :
-        str_literals, // 字符串字面量 "hello gowmat"
-        num_literals, // 数字字面量 1 2 34.5
-        undefined, // 未定义
-        separator, // 分隔符（逗号，分号）
-        end_of_line, // 行末尾
-        end_of_file; // 文件末尾
-    }
     protected static final String EOL = "\\n"; // 行末尾
-    protected static final Token EOF = new Token(tokenType.end_of_file, "EOF", -1); // 文件末尾
-    private tokenType type = tokenType.undefined; // token类型
+    protected static final Token EOF = new Token(Type.end_of_file, "EOF", -1); // 文件末尾
+    private Type type = Type.undefined; // token类型
     private String content; // token内容
     private int line; // 行标
 
-    public Token(tokenType t, String content, int line) {
+    public Token(Type t, String content, int line) {
         this.type = t;
         this.content = content;
         this.line = line;
     }
 
-    public tokenType getType() {
+    // 获取Token优先级
+    public int priority() {
+        if (this.isSep())
+            return 1;
+        else if (this.isKey())
+            return 2;
+        else if (Pattern.matches("\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", this.content))
+            return 3;
+        else if (Pattern.matches("\\+|-", this.content))
+            return 4;
+        else if (this.content == "(" || this.content == ")")
+            return 5;
+        else
+            return 6;
+    }
+
+    // 克隆
+    public Token clone() {
+        return new Token(this.type, this.content, this.line);
+    }
+
+    // 判断Token类型
+    public boolean isIdtf() {
+        return this.type == Type.identifier;
+    }
+
+    public boolean isKey() {
+        return this.type == Type.key;
+    }
+
+    public boolean isOptr() {
+        return this.type == Type.operator;
+    }
+
+    public boolean isString() {
+        return this.type == Type.str_literals;
+    }
+
+    public boolean isNum() {
+        return this.type == Type.num_literals;
+    }
+
+    public boolean isUndef() {
+        return this.type == Type.undefined;
+    }
+
+    public boolean isSep() {
+        return this.type == Type.separator;
+    }
+
+    public boolean isEOL() {
+        return this.type == Type.end_of_line;
+    }
+
+    public boolean isEOF() {
+        return this.type == Type.end_of_file;
+    }
+
+    // Setter and Getter
+    public Type getType() {
         return type;
     }
 
-    public void setType(tokenType type) {
+    public void setType(Type type) {
         this.type = type;
     }
 
