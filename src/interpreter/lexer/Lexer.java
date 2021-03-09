@@ -1,3 +1,4 @@
+
 package interpreter.lexer;
 
 import java.io.*;
@@ -6,25 +7,30 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class Lexer {
+    private String objfile;
     private List<String> source_code = new ArrayList<String>(); // 源代码List，按行储存
     private int code_pos = 0; // source_code的指针
     private List<Token> tokens = new ArrayList<Token>(); // Token列表
     private List<String> key = new ArrayList<String>(); // 关键字列表
-    private static List<String> var = new ArrayList<String>(); // 变量列表
-    public static void main(String[] args) {
+
+    public Lexer(String objfile) {
+        this.objfile = objfile;
+    }
+
+    // 进行词法分析
+    public void analyze() {
         String code; // 一行源代码
-        String file_name = "code";
+        String file_name = this.objfile;
         file_name = file_name + ".gmt";
-        Lexer lexer = new Lexer();
-        lexer.init_keyList(); // 初始化关键字列表
+        this.init_keyList(); // 初始化关键字列表
 
         /* 定义正则表达式 */
         String[] regexPat = new String[6];
         regexPat[0] = "[a-zA-Z_][a-zA-Z_0-9]*"; // identifier标识符
         regexPat[1] = "";
-        for(int i = 0; i < lexer.key.size(); i++) {
-            regexPat[1] = regexPat[1] + lexer.key.get(i);
-            if (i != lexer.key.size() - 1)
+        for (int i = 0; i < this.key.size(); i++) {
+            regexPat[1] = regexPat[1] + this.key.get(i);
+            if (i != this.key.size() - 1)
                 regexPat[1] += "|";
         } // key关键字
         regexPat[2] = "\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)|\\[|\\]|>|<|=|>=|<=|==|\\|\\||&&|\\||&|:"; // operator操作符
@@ -33,39 +39,36 @@ public class Lexer {
         regexPat[5] = ",|;"; // separator分隔符
 
         /* 开始切割 */
-        lexer.readCode(file_name); // 把文件中所有内容读到source_code里
+        this.readCode(file_name); // 把文件中所有内容读到source_code里
         int line_num = 1; // 行标
         do {
             /* 根据正则表达式进行匹配 */
-            code = lexer.getLineCode(); // 读一行代码
-            List<String> _t_code_list = lexer.cut(code, regexPat); // 切割
-            for(int i = 0; i < _t_code_list.size(); i++) {
+            code = this.getLineCode(); // 读一行代码
+            List<String> _t_code_list = this.cut(code, regexPat); // 切割
+            for (int i = 0; i < _t_code_list.size(); i++) {
                 if (Pattern.matches(regexPat[0], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.identifier, _t_code_list.get(i), line_num);
+                    this.addToken(Type.identifier, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[1], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.key, _t_code_list.get(i), line_num);
+                    this.addToken(Type.key, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[2], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.operator, _t_code_list.get(i), line_num);
+                    this.addToken(Type.operator, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[3], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.str_literals, _t_code_list.get(i), line_num);
+                    this.addToken(Type.str_literals, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[4], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.num_literals, _t_code_list.get(i), line_num);
+                    this.addToken(Type.num_literals, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[5], _t_code_list.get(i)))
-                    lexer.addToken(Token.tokenType.separator, _t_code_list.get(i), line_num);
+                    this.addToken(Type.separator, _t_code_list.get(i), line_num);
                 else
-                    lexer.addToken(Token.tokenType.undefined, _t_code_list.get(i), line_num);
+                    this.addToken(Type.undefined, _t_code_list.get(i), line_num);
             }
-            lexer.addToken(Token.tokenType.end_of_line, Token.EOL, line_num); // 添加换行标志
+            this.addToken(Type.end_of_line, Token.EOL, line_num); // 添加换行标志
             line_num++;
-        } while (lexer.hasNext());
-        lexer.addToken(Token.EOF);
-
-        // test
-        lexer.save_result(file_name);
+        } while (this.hasNext());
+        this.addToken(Token.EOF);
     }
 
     // 把所有的代码读到source_code中
-    public void readCode(String fileName) {
+    protected void readCode(String fileName) {
         FileReader fr = null;
         String code = null;
         try {
@@ -89,7 +92,7 @@ public class Lexer {
     }
 
     // 将一行代码进行分割
-    public List<String> cut(String code, String[] regexPat) {
+    protected List<String> cut(String code, String[] regexPat) {
         List<String> res = new ArrayList<String>();
         code = code.trim();
         char[] _ch_code = code.toCharArray();
@@ -133,7 +136,7 @@ public class Lexer {
                         _ch_code = code.toCharArray();
                         pos = 0;
                         // 如果sb里面的字符串不是关键字，而是字符串（没有右边的引号），则把空格存入sb
-                    } else if (Pattern.matches("\".*", sb.toString())){
+                    } else if (Pattern.matches("\".*", sb.toString())) {
                         sb.append(_ch_code[pos]);
                         pos++;
                     } else {
@@ -157,12 +160,12 @@ public class Lexer {
     }
 
     // 读一行代码
-    public String getLineCode() {
+    protected String getLineCode() {
         return this.source_code.get(this.code_pos++);
     }
 
     // 判断是否还有代码
-    public boolean hasNext() {
+    protected boolean hasNext() {
         if (this.code_pos < this.source_code.size())
             return true;
         else
@@ -170,10 +173,10 @@ public class Lexer {
     }
 
     // 初始化关键字列表
-    public void init_keyList() {
+    protected void init_keyList() {
         FileReader fr = null;
         try {
-            fr = new FileReader("keyword");
+            fr = new FileReader("src/config/keyword");
             BufferedReader reader = new BufferedReader(fr);
             String _key;
             while ((_key = reader.readLine()) != null)
@@ -194,35 +197,35 @@ public class Lexer {
     }
 
     // 添加一个Token到Token列表中
-    public void addToken(Token.tokenType t, String content, int line) {
+    protected void addToken(Type t, String content, int line) {
         Token token = new Token(t, content, line);
         this.tokens.add(token);
     }
-    public void addToken(Token token) {
+
+    protected void addToken(Token token) {
         this.tokens.add(token);
     }
 
     // 返回一个Token对象
-    public Token getToken(int index) {
+    protected Token getToken(int index) {
         return this.tokens.get(index);
     }
 
     // 将词法分析的结果保存到文件中
-    public void save_result(String fileName) {
-        fileName = fileName.substring(0, fileName.length() - 4);
-        fileName = "lexical_result_of_" + fileName + ".txt";
+    public void save_result() {
+        String fileName = "lexical_result_of_" + this.objfile + ".txt";
         PrintStream ps = null;
         try {
             ps = new PrintStream(new FileOutputStream(fileName));
             ps.print("-----所在行标----- | ----------Token内容---------- | ----------Token类型----------");
             ps.print("\n");
-            int _t1_len = 5*2 + 4 + 3;
-            int _t2_len = _t1_len + 2 + 10*2 + 7;
-            for(int i = 0; i < this.tokens.size(); i++) {
+            int _t1_len = 5 * 2 + 4 + 3;
+            int _t2_len = _t1_len + 2 + 10 * 2 + 7;
+            for (int i = 0; i < this.tokens.size(); i++) {
                 Token t = this.getToken(i);
-                if (t.getType() == Token.tokenType.end_of_line) {
+                if (t.getType() == Type.end_of_line) {
                     continue;
-                } else if (t.getType() == Token.tokenType.end_of_file) {
+                } else if (t.getType() == Type.end_of_file) {
                     break;
                 } else {
                     // 写行标
@@ -248,5 +251,21 @@ public class Lexer {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public String getObjfile() {
+        return objfile;
+    }
+
+    public List<String> getSource_code() {
+        return source_code;
+    }
+
+    public List<Token> getTokens() {
+        return tokens;
+    }
+
+    public List<String> getKey() {
+        return key;
     }
 }
