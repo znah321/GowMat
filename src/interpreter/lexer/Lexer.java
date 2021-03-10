@@ -46,18 +46,18 @@ public class Lexer {
             code = this.getLineCode(); // 读一行代码
             List<String> _t_code_list = this.cut(code, regexPat); // 切割
             for (int i = 0; i < _t_code_list.size(); i++) {
-                if (Pattern.matches(regexPat[0], _t_code_list.get(i)))
-                    this.addToken(Type.identifier, _t_code_list.get(i), line_num);
-                else if (Pattern.matches(regexPat[1], _t_code_list.get(i)))
-                    this.addToken(Type.key, _t_code_list.get(i), line_num);
-                else if (Pattern.matches(regexPat[2], _t_code_list.get(i)))
-                    this.addToken(Type.operator, _t_code_list.get(i), line_num);
-                else if (Pattern.matches(regexPat[3], _t_code_list.get(i)))
-                    this.addToken(Type.str_literals, _t_code_list.get(i), line_num);
+                if (Pattern.matches(regexPat[5], _t_code_list.get(i)))
+                    this.addToken(Type.separator, _t_code_list.get(i), line_num);
                 else if (Pattern.matches(regexPat[4], _t_code_list.get(i)))
                     this.addToken(Type.num_literals, _t_code_list.get(i), line_num);
-                else if (Pattern.matches(regexPat[5], _t_code_list.get(i)))
-                    this.addToken(Type.separator, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[2], _t_code_list.get(i)))
+                    this.addToken(Type.operator, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[1], _t_code_list.get(i)))
+                    this.addToken(Type.key, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[3], _t_code_list.get(i)))
+                    this.addToken(Type.str_literals, _t_code_list.get(i), line_num);
+                else if (Pattern.matches(regexPat[0], _t_code_list.get(i)))
+                    this.addToken(Type.identifier, _t_code_list.get(i), line_num);
                 else
                     this.addToken(Type.undefined, _t_code_list.get(i), line_num);
             }
