@@ -1,5 +1,5 @@
-package matrix.goweild.util;
-import matrix.goweild.Matrix;
+package GowMat.util;
+import GowMat.Matrix;
 
 public class MatrixMath {
     /**

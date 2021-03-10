@@ -1,4 +1,4 @@
-package matrix.goweild;
+package GowMat;
 
 public class LU_Decomposition {
     private double[][] L; //

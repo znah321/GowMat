@@ -1,4 +1,4 @@
-package matrix.goweild;
+package GowMat;
 
 public class SingularValue_Decomposition {
     private double[][] U;

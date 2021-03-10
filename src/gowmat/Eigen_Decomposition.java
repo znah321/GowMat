@@ -1,6 +1,6 @@
-package matrix.goweild;
+package GowMat;
 
-import matrix.goweild.util.CreateMatrix;
+import GowMat.util.CreateMatrix;
 
 public class Eigen_Decomposition {
     private double[] eig_value;

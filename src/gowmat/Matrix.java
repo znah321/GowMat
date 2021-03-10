@@ -1,7 +1,4 @@
-package matrix.goweild;
-
-import matrix.goweild.util.CreateMatrix;
-import matrix.goweild.util.MatrixMath;
+package GowMat;
 
 import java.lang.reflect.Array;
 import java.text.NumberFormat;
@@ -58,6 +55,22 @@ public class Matrix {
         }
         this.mat = data;
 //        this.display();
+    }
+
+    /**
+     * 将矩阵转换成Token
+     * @return
+     */
+    public String toToken() {
+        String res = "[";
+        for(int i = 0; i < this.row; i++) {
+            res += this.mat[i][0];
+            for (int j = 1; j < this.column; j++)
+                res +=  "," + String.valueOf(this.mat[i][j]);
+            res += ";";
+        }
+        res = res.substring(0, res.length() - 1) + "]";
+        return res;
     }
 
     /**

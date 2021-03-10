@@ -1,4 +1,4 @@
-package matrix.goweild;
+package GowMat;
 
 public class Cholesky_Decomposition {
     private double[][] L;

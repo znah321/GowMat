@@ -1,4 +1,4 @@
-package matrix.goweild;
+package GowMat;
 
 public class QR_Decomposition {
     private double[][] Q;

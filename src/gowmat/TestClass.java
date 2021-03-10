@@ -1,8 +1,4 @@
-import interpreter.lexer.Lexer;
-import matrix.goweild.Cholesky_Decomposition;
-import matrix.goweild.Eigen_Decomposition;
-import matrix.goweild.Matrix;
-import matrix.goweild.SingularValue_Decomposition;
+package GowMat;
 
 import java.util.regex.Pattern;
 
