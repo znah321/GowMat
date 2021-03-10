@@ -17,9 +17,9 @@ public class Token {
 
     // 获取Token优先级
     public int priority() {
-        if (this.isSep())
+        if (this.isKey())
             return 1;
-        else if (this.isKey())
+        else if (this.isSep())
             return 2;
         else if (Pattern.matches("\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", this.content))
             return 3;
@@ -49,13 +49,15 @@ public class Token {
         return this.type == Type.operator;
     }
 
-    public boolean isString() {
+    public boolean isLiteString() {
         return this.type == Type.str_literals;
     }
 
-    public boolean isNum() {
+    public boolean isLiteNum() {
         return this.type == Type.num_literals;
     }
+
+    public boolean isLiteMat() {return this.type == Type.mat_literals;}
 
     public boolean isUndef() {
         return this.type == Type.undefined;
