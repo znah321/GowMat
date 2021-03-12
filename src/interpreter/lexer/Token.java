@@ -67,6 +67,18 @@ public class Token {
         return this.type == Type.separator;
     }
 
+    public boolean isNum() {
+        return this.type == Type.num;
+    }
+
+    public boolean isMat() {
+        return this.type == Type.mat;
+    }
+
+    public boolean isString() {
+        return this.type == Type.string;
+    }
+
     public boolean isEOL() {
         return this.type == Type.end_of_line;
     }
