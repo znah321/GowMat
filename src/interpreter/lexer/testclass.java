@@ -23,8 +23,12 @@ public class testclass {
         parser.parse();
 
 
-//        Matrix m = new Matrix("[]");
-//        System.out.println(m.toToken());
+
+//        Matrix m = new Matrix("[1,2,-3;1,-2,1;0,1,-1]");
+//        Matrix new_m = m.times(m);
+//        new_m.display();
+//        System.out.println(new_m.getMat()[1][1]);
+//        System.out.println(m.trans().times(m).det());
 
 
         /*
