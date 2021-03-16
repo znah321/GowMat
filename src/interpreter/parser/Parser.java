@@ -99,7 +99,7 @@ public class Parser {
                     infix_expr.add(l_token.get(i).clone());
                 List<Token> suffix_expr = this.infix_to_suffix(infix_expr);
                 Token res = this.cal_suffix(suffix_expr);
-                /* 将计算结果赋给标识符 */
+                /* 将计算结果赋给变量 */
                 String varName = l_token.get(0).getContent();
                 if (this.varPool.containsKey(varName))
                     this.varPool.get(varName).setContent(res.getContent());
@@ -111,7 +111,13 @@ public class Parser {
                         t = new Token(Type.mat, this.getVarValue(res), l_token.get(0).getLine());
                     this.varPool.put(varName, t);
                     ///////////////
-                    System.out.println(varName + " = " + t.getContent());
+                    System.out.print(varName + " = ");
+                    if (this.varPool.get(varName).isNum())
+                        System.out.println(t.getContent());
+                    else {
+                        System.out.println();
+                        new Matrix(t.getContent()).display();
+                    }
                 }
                 // 清空字面量变量池
                 this.lite_varPool.clear();
@@ -133,6 +139,7 @@ public class Parser {
         List<Token> suffix_expr = new ArrayList<Token>(); // 转换结果
         Stack<Token> s = new Stack<>();
         boolean flag = false; // false代表形式(1)，true代表形式(2)
+        int line_idx = expr.get(0).getLine(); // 当前行标
         for(int i = 0; i < expr.size(); i++) {
             Token t = expr.get(i).clone(); // 当前Token
             /* token是标识符（变量） */
@@ -158,57 +165,102 @@ public class Parser {
                         else if (Pattern.matches(";|,|[+-]?\\d+(\\.\\d+)?", expr.get(pos).getContent()))
                             mat_expr += expr.get(pos).getContent();
                         else {
-                            throw new SyntaxErrorException("矩阵输入格式错误！");
+                            String msg = "\n\t第" + line_idx + "行：" + "矩阵输入格式错误，请检查输入！";
+                            throw new SyntaxErrorException(msg);
                         }
                     }
                     mat_expr += "]";
                     i = pos; // 从"]"的下一个位置开始扫描
                     // 把这个字面量添加到字面量变量池中
                     String name = this.geneName();
-                    Token new_t = new Token(Type.mat_literals, mat_expr, expr.get(0).getLine());
+                    Token new_t = new Token(Type.mat_literals, mat_expr, line_idx);
                     this.lite_varPool.put(name, new_t);
-                    suffix_expr.add(new Token(Type.mat_literals, name, expr.get(0).getLine()));
+                    suffix_expr.add(new Token(Type.mat_literals, name, line_idx));
                 } else if (flag == true && t.getContent().equals("(")) {
                     /* 形式(2) */
                     flag = false;
                     String varName = expr.get(i-1).getContent();
                     String r_expr = "["; // 行的取值
                     String c_expr = "["; // 列的取值
-                    int pos = i+2;
-                    for(; ; pos++) {
-                        if (expr.get(pos).getContent().equals("]"))
-                            break;
-                        else if (Pattern.matches(";|,|:|[+-]?\\d+(\\.\\d+)?", expr.get(pos).getContent()))
-                            r_expr += expr.get(pos).getContent();
-                        else {
-                            String msg = "\n\t第" + expr.get(0).getLine() + "行：" + "矩阵输入格式错误，请检查输入！";
-                            System.out.println(new SyntaxErrorException(msg));
+                    int pos = i + 1;
+
+                    /*
+                        如果expr.get(pos)的Token对象是"["，说明是取子矩阵
+                        如果expr.get(pos)的Token对象是数字，说明是取单个值
+                     */
+                    if (expr.get(pos).getContent().equals("[")) {
+                        pos = i+2;
+                        for(; ; pos++) {
+                            if (expr.get(pos).getContent().equals("]"))
+                                break;
+                            else if (Pattern.matches(";|,|:|[+-]?\\d+(\\.\\d+)?", expr.get(pos).getContent()))
+                                r_expr += expr.get(pos).getContent();
+                            else {
+                                String msg = "\n\t第" + line_idx + "行：" + "矩阵输入格式错误，请检查输入！";
+                                throw new SyntaxErrorException(msg);
+                            }
+                        }
+                        r_expr += "]";
+                        pos = pos + 2; //跳过",["
+                        for(;; pos++) {
+                            if (expr.get(pos).getContent().equals("]") || expr.get(pos).getContent().equals(")"))
+                                break;
+                            else if (Pattern.matches(";|,|:|[+-]?\\d+(\\.\\d+)?", expr.get(pos).getContent()))
+                                c_expr += expr.get(pos).getContent();
+                            else {
+                                String msg = "\n\t第" + line_idx + "行：" + "矩阵输入格式错误，请检查输入！";
+                                throw new SyntaxErrorException(msg);
+                            }
+                        }
+                        c_expr += "]";
+                        if (expr.get(pos).getContent().equals(")"))
+                            i = pos;
+                        else
+                            i = pos + 1; // 从")"的下一个位置开始扫描
+
+                        // 赋值
+                        /*
+                            这一步是把后缀表达式末尾的元素删掉。
+                            此时末尾的元素是一个变量名，由于这一步是取一个子矩阵，在取之前已经先把这把变量放到
+                            了表达式里面，但实际要的不是这个变量，而是对应的子矩阵，因此要删掉
+                         */
+                        suffix_expr.remove(suffix_expr.size() - 1);
+                        if (this.varPool.containsKey(varName)) {
+                            Matrix m = (new Matrix(this.varPool.get(varName).getContent())).submatrix(r_expr, c_expr);
+                            String name = this.geneName();
+                            Token new_t = new Token(Type.mat_literals, m.toToken(), line_idx);
+                            this.lite_varPool.put(name, new_t);
+                            suffix_expr.add(new Token(Type.mat_literals, name, line_idx));
+                        } else {
+                            String msg = "\n\t第" + line_idx + "行：" + "变量" + varName + "不存在，请检查输入！";
+                            throw new VariableNotFoundException(msg);
+                        }
+                    } else if (expr.get(pos).isLiteNum() || (expr.get(pos).isIdtf() && this.varPool.containsKey(getVarValue(expr.get(pos))))) {
+                        pos = i + 1;
+                        r_expr = expr.get(pos).getContent();
+                        c_expr = expr.get(pos + 2).getContent();
+                        i = pos + 3;
+
+                        // 赋值
+                        /*
+                            这一步是把后缀表达式末尾的元素删掉。
+                            此时末尾的元素是一个变量名，由于这一步是取一个子矩阵，在取之前已经先把这把变量放到
+                            了表达式里面，但实际要的不是这个变量，而是对应的子矩阵，因此要删掉
+                         */
+                        suffix_expr.remove(suffix_expr.size() - 1);
+                        if (this.varPool.containsKey(varName)) {
+                            Matrix m = new Matrix(this.varPool.get(varName).getContent());
+                            String name = this.geneName();
+                            Token new_t = new Token(Type.num_literals, String.valueOf(m.elem(r_expr, c_expr)), line_idx);
+                            this.lite_varPool.put(name, new_t);
+                            suffix_expr.add(new Token(Type.num_literals, name, line_idx));
+                        } else {
+                            String msg = "\n\t第" + line_idx + "行：" + "矩阵输入格式错误，请检查输入！";
+                            throw new SyntaxErrorException(msg);
                         }
                     }
-                    r_expr += "]";
-                    pos = pos + 3; //跳过",["
-                    for(;; pos++) {
-                        if (expr.get(pos).getContent().equals("]"))
-                            break;
-                        else if (Pattern.matches(";|,|:|[+-]?\\d+(\\.\\d+)?", expr.get(pos).getContent()))
-                            c_expr += expr.get(pos).getContent();
-                        else {
-                            String msg = "\n\t第" + expr.get(0).getLine() + "行：" + "矩阵输入格式错误，请检查输入！";
-                            System.out.println(new SyntaxErrorException(msg));
-                        }
-                    }
-                    c_expr += "]";
-                    i = pos + 2; // 从")"的下一个位置开始扫描
-                    if (this.varPool.containsKey(varName)) {
-                        Matrix m = (new Matrix(this.varPool.get(varName).getContent())).submatrix(r_expr, c_expr);
-                        String name = this.geneName();
-                        Token new_t = new Token(Type.mat_literals, m.toToken(), expr.get(0).getLine());
-                        this.lite_varPool.put(name, new_t);
-                        suffix_expr.add(new Token(Type.mat_literals, name, expr.get(0).getLine()));
-                    } else {
-                        String msg = "\n\t第" + expr.get(0).getLine() + "行：" + "变量" + varName + "不存在，请检查输入！";
-                        System.out.println(new VariableNotFoundException(msg));;
-                    }
+
+
                 } else if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)", t.getContent()) || t.isKey() || t.isSep()){
                     flag = false;
                     /* 按照优先级进行处理 */
@@ -218,7 +270,7 @@ public class Parser {
                         /*
                             是操作符：
                             while 栈非空
-                                if 栈顶元素的优先级 < 当前元素的优先级
+                                if 栈顶元素的优先级 <= 当前元素的优先级
                                     栈顶元素出栈
                                 end
                             end
@@ -226,7 +278,7 @@ public class Parser {
                          */
                         while (!s.empty()) {
                             Token top = s.peek(); // 取栈顶元素
-                            if (top.priority() < t.priority())
+                            if (top.priority() <= t.priority())
                                 suffix_expr.add(s.pop());
                             else
                                 break;
@@ -273,43 +325,79 @@ public class Parser {
     public Token cal_suffix(List<Token> expr) {
         Token key = null; // 关键字Token（函数）
         List<Token> argv = new ArrayList<>(); // 函数的参数
-        Stack<Token> optn_s = new Stack<>(); // 运算数的栈
+        Stack<Object> optn_s = new Stack<>(); // 运算数的栈
         String t1 = null; // 左运算数
         String t2 = null; // 右运算数
+        boolean has_comma = false; // 是否遇到了逗号，false代表没遇到，true代表遇到了
+        List<Object> comma_res = new ArrayList<>(); // 逗号运算的结果
+        int line_idx = expr.get(0).getLine();
+
         for(int i = 0; i < expr.size(); i++) {
             Token inst_t = expr.get(i).clone(); // 当前Token
             if (inst_t.isLiteNum() || inst_t.isLiteMat() || inst_t.isIdtf()) // 当前Token是数字/矩阵字面量、标识符（变量），直接入栈
                 optn_s.push(inst_t);
             else if (inst_t.getContent().equals(",")) {
                 // 当前Token是","，说明","前面的Token是函数的参数
-                if (optn_s.empty()) {
-                    String msg = "\n\t第" + expr.get(0).getLine() + "行：" + "请检查函数的参数！";
+                has_comma = true;
+                if (optn_s.size() < 2) {
+                    String msg = "\n\t第" + line_idx + "行：" + "请检查函数的参数！";
                     throw new SyntaxErrorException(msg);
                 } else {
                     /*
-                        一个函数的参数个数a与括号中逗号的个数b满足a = b + 1
-                        每遇到一个逗号，就弹出一个参数，当遇到关键字时，再弹出一个参数
+                        弹出2个参数，放到comma_res中，再把comma_res放到栈里面
                      */
-                    argv.add(optn_s.pop());
+                    if (comma_res.isEmpty()) {
+                        comma_res.add(optn_s.pop());
+                        comma_res.add(0, optn_s.pop());
+                    } else
+                        comma_res.add(optn_s.pop());
+                    optn_s.push(comma_res);
                 }
             } else if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", inst_t.getContent())) {
-                // 当前Token是九个运算符之一，弹出栈中两个元素进行计算
+                /* 当前Token是九个运算符之一，弹出栈中两个元素进行计算 */
+                // 操作数的赋值
                 if (optn_s.size() < 2) {
-                    String msg = "\n\t第" + expr.get(0).getLine() + "行：" + "请检查运算符两边的运算数！";
+                    String msg = "\n\t第" + line_idx + "行：" + "请检查运算符两边的运算数！";
                     throw new SyntaxErrorException(msg);
                 } else {
-                    t2 = this.getVarValue(optn_s.pop());
-                    t1 = this.getVarValue(optn_s.pop());
+                    if (optn_s.peek().getClass() != Token.class) {
+                        String msg = "\n\t第" + line_idx + "行：" + "请检查运算符两边的运算数！";
+                        throw new SyntaxErrorException(msg);
+                    } else
+                        t2 = this.getVarValue((Token) optn_s.pop());
+                    if (optn_s.peek().getClass() != Token.class) {
+                        String msg = "\n\t第" + line_idx + "行：" + "请检查运算符两边的运算数！";
+                        throw new SyntaxErrorException(msg);
+                    } else
+                        t1 = this.getVarValue((Token) optn_s.pop());
+
                     Token _t_res = this.arithmetic(inst_t, t1, t2);
                     optn_s.push(_t_res); // 计算结果压入栈中
                 }
             } else if (inst_t.isKey()) {
-                if (optn_s.empty() && !argv.isEmpty()) { // 有可能函数只有一个参数，这时argv就是空的
-                    String msg = "\n\t第" + inst_t.getLine() + "行：函数参数输入有误" + "！";
-                    throw new SyntaxErrorException(msg);
-                } else
-                    argv.add(optn_s.pop()); // 弹出最后一个参数
-                Collections.reverse(argv);
+                if (has_comma) { // 有逗号，栈顶为ArrayList
+                    if (!optn_s.empty()) {
+                        if (optn_s.peek().getClass() == ArrayList.class) {
+                            List _t_list = (ArrayList) optn_s.pop();
+                            for (int j = 0; j < _t_list.size(); j++)
+                                argv.add((Token) _t_list.get(j));
+                        }
+                    } else {
+                        String msg = "\n\t第" + line_idx + "行：函数参数输入有误" + "！";
+                        throw new VariableTypeException(msg);
+                    }
+
+                } else { // 没有逗号，栈顶为Token
+                    if (optn_s.peek().getClass() != Token.class) {
+                        String msg = "\n\t第" + line_idx + "行：函数参数输入有误" + "！";
+                        throw new VariableTypeException(msg);
+                    } else
+                        argv.add((Token) optn_s.pop());
+                }
+                comma_res.clear();
+                has_comma = false;
+
+                // 调用函数计算
                 Token res = null;
                 ParserFunc func = new ParserFunc(this);
                 String key_name = inst_t.getContent();
@@ -317,20 +405,39 @@ public class Parser {
                     case "sum":
                         res = func.sum(inst_t, argv);
                         break;
+                    case "eye":
+                        res = func.eye(inst_t, argv);
+                        break;
+                    case "zeros":
+                    case "ones":
+                    case "random":
+                    case "randi":
+                        res = func.gene_a_matrix(inst_t, argv);
+                        break;
                 }
+                argv.clear();
                 optn_s.push(res);
             }
         }
         // 循环结束，计算结果就是栈顶的值
-        return optn_s.pop();
+        if (optn_s.peek().getClass() == Token.class)
+            return (Token) optn_s.pop();
+        else {
+            String msg = "\n\t第" + line_idx + "行：函数参数输入有误" + "！";
+            throw new VariableTypeException(msg);
+        }
     }
 
     // 获取变量值
     public String getVarValue(Token t) {
-        if (t.isLiteNum())
-            return t.getContent();
-        else if (t.isLiteMat())
+        if (t.isLiteNum()) {
+            if (this.lite_varPool.containsKey(t.getContent()))
+                return this.lite_varPool.get(t.getContent()).getContent();
+            else
+                return t.getContent();
+        } else if (t.isLiteMat()) {
             return this.lite_varPool.get(t.getContent()).getContent();
+        }
         else if (t.isIdtf()) {
             if (this.varPool.containsKey(t.getContent()))
                 return this.varPool.get(t.getContent()).getContent();
