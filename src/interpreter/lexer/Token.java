@@ -20,11 +20,11 @@ public class Token {
         if (this.isKey())
             return 1;
         else if (this.isSep())
-            return 2;
-        else if (Pattern.matches("\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", this.content))
-            return 3;
-        else if (Pattern.matches("\\+|-", this.content))
             return 4;
+        else if (Pattern.matches("\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", this.content))
+            return 2;
+        else if (Pattern.matches("\\+|-", this.content))
+            return 3;
         else if (this.content == "(" || this.content == ")")
             return 5;
         else
