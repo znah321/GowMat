@@ -3,6 +3,8 @@ package interpreter.lexer;
 import GowMat.Matrix;
 import interpreter.parser.Parser;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,7 +23,9 @@ public class testclass {
         lexer.save_result();
         Parser parser = new Parser(lexer);
         parser.parse();
-
+        System.out.println("1".split(","));
+        List<Token> t = new ArrayList<Token>();
+        System.out.println();
 
 
 //        Matrix m = new Matrix("[1,2,-3;1,-2,1;0,1,-1]");
