@@ -1,6 +1,8 @@
 
 package interpreter.lexer;
 
+import exception.SyntaxErrorException;
+
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +46,7 @@ public class Lexer {
         do {
             /* 根据正则表达式进行匹配 */
             code = this.getLineCode(); // 读一行代码
-            List<String> _t_code_list = this.cut(code, regexPat); // 切割
+            List<String> _t_code_list = this.cut(code, regexPat, line_num); // 切割
             for (int i = 0; i < _t_code_list.size(); i++) {
                 if (Pattern.matches(regexPat[5], _t_code_list.get(i)))
                     this.addToken(Type.separator, _t_code_list.get(i), line_num);
@@ -92,7 +94,7 @@ public class Lexer {
     }
 
     // 将一行代码进行分割
-    protected List<String> cut(String code, String[] regexPat) {
+    protected List<String> cut(String code, String[] regexPat, int line_num) {
         List<String> res = new ArrayList<String>();
         code = code.trim();
         char[] _ch_code = code.toCharArray();
@@ -113,15 +115,23 @@ public class Lexer {
                         NullPointerException异常（因为t_str初始化成了null，而在第一步中取不了两个字符给t_str）
                         同时用的是"&&"而不是"&"，第一个条件已经是false了，避免检查第二个条件
                      */
+                    // 先检查sb里面有没有内容，如果有的话就先把里面的内容存到res里面
+                    if (sb.length() != 0) {
+                        res.add(sb.toString());
+                        sb.delete(0, sb.length()); // 记得清空sb
+                    }
                     res.add(t_str);
                     code = code.substring(pos + 2).trim();
                     _ch_code = code.toCharArray();
                     pos = 0;
                     // 再判断是不是一元操作符或分隔符（逗号、分号）
                 } else if (Pattern.matches(regexPat[2], String.valueOf(_ch_code[pos])) || _ch_code[pos] == ',' || _ch_code[pos] == ';') {
-                    // 当前字符是运算符或分隔符（逗号、分号）
-                    if (sb.length() != 0)
+                    // 先检查sb里面有没有内容，如果有的话就先把里面的内容存到res里面
+                    if (sb.length() != 0) {
                         res.add(sb.toString());
+                        sb.delete(0, sb.length()); // 记得清空sb
+                    }
+                    // 当前字符是运算符或分隔符（逗号、分号）
                     res.add(String.valueOf(_ch_code[pos]));
                     sb.delete(0, sb.length()); // 清空sb
                     code = code.substring(pos + 1).trim();
@@ -135,13 +145,31 @@ public class Lexer {
                         code = code.substring(pos + 1).trim();
                         _ch_code = code.toCharArray();
                         pos = 0;
-                        // 如果sb里面的字符串不是关键字，而是字符串（没有右边的引号），则把空格存入sb
-                    } else if (Pattern.matches("\".*", sb.toString())) {
-                        sb.append(_ch_code[pos]);
+                    } else
                         pos++;
-                    } else {
-                        pos++;
+                } else if (_ch_code[pos] == '\'' || _ch_code[pos] == '\"'){
+                    int _str_pos = pos + 1;
+                    boolean reach_end = false;
+                    String res_string = "";
+                    while (!reach_end) {
+                        // _str_pos等于_ch_code的长度，说明此时已经到达该行末尾，但分号没有对齐
+                        if (_str_pos == _ch_code.length) {
+                            String msg = "\n\t第" + line_num + "行：" + "请检查字符串两边的编号！";
+                            throw new SyntaxErrorException(msg);
+                        } else {
+                            if (_ch_code[_str_pos] == '\'' || _ch_code[_str_pos] == '\"') {
+                                if (_ch_code[_str_pos - 1] == '\\') // 处理转义字符
+                                    res_string += String.valueOf(_ch_code[_str_pos++]);
+                                else
+                                    reach_end = true;
+                            } else
+                                res_string += String.valueOf(_ch_code[_str_pos++]);
+                        }
                     }
+                    res.add("\"" + res_string + "\"");
+                    pos = 0;
+                    code = code.substring(_str_pos + 1, code.length());
+                    _ch_code = code.toCharArray();
                 } else {
                     sb.append(_ch_code[pos]);
                     pos++;

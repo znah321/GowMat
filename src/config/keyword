@@ -1,4 +1,5 @@
 nil
+input
 if
 else
 else if
@@ -13,6 +14,9 @@ lu
 chol
 eig
 svd
+rank
+det
+trans
 eye
 zeros
 ones

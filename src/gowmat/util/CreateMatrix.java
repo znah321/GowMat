@@ -36,6 +36,33 @@ public class CreateMatrix {
     }
 
     /**
+     * 生成一个元素均为1的矩阵
+     * @param n
+     * @return
+     */
+    public static Matrix ones(int n) {
+        double[][] mat = new double[n][n];
+        for(int i = 0; i < n; i++)
+            for(int j = 0; j < n; j++)
+                mat[i][j] = 1;
+        return new Matrix(mat, n, n);
+    }
+
+    /**
+     * 生成一个元素均为1的矩阵
+     * @param n
+     * @param m
+     * @return
+     */
+    public static Matrix ones(int n, int m) {
+        double[][] mat = new double[n][m];
+        for(int i = 0; i < n; i++)
+            for(int j = 0; j < m; j++)
+                mat[i][j] = 1;
+        return new Matrix(mat, n, m);
+    }
+
+    /**
      * 随机生成一个n阶矩阵
      * @param n
      * @param lb 元素下界

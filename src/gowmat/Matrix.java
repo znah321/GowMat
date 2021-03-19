@@ -1,5 +1,7 @@
 package GowMat;
 
+import exception.SyntaxErrorException;
+
 import java.lang.reflect.Array;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -306,6 +308,40 @@ public class Matrix {
     }
 
     /**
+     * 矩阵点乘
+     * @param m
+     * @return
+     */
+    public Matrix dot_times(Matrix m) {
+        if (!this.adjust_r_c_same(this, m)) {
+            System.out.println("矩阵维度不相同！");
+            System.exit(-1);
+        }
+        double[][] res = new double[this.row][this.column];
+        for(int i = 0; i < this.row; i++)
+            for(int j = 0; j < this.column; j++)
+                res[i][j] = this.mat[i][j] * m.mat[i][j];
+        return new Matrix(res);
+    }
+
+    /**
+     * 矩阵点除
+     * @param m
+     * @return
+     */
+    public Matrix dot_divide(Matrix m) {
+        if (!this.adjust_r_c_same(this, m)) {
+            System.out.println("矩阵维度不相同！");
+            System.exit(-1);
+        }
+        double[][] res = new double[this.row][this.column];
+        for(int i = 0; i < this.row; i++)
+            for(int j = 0; j < this.column; j++)
+                res[i][j] = this.mat[i][j] / m.mat[i][j];
+        return new Matrix(res);
+    }
+
+    /**
      * 求行列式
      * @return 行列式
      */
@@ -365,30 +401,30 @@ public class Matrix {
      * 按行求和
      * @return 一维数组
      */
-    public double[] sum_by_row() {
-        double[] res = new double[this.row];
+    public Matrix sum_by_row() {
+        double[][] res = new double[this.row][1];
         for(int i = 0; i < this.row; i++) {
             double temp = 0;
             for(int j = 0; j < this.column; j++)
                 temp += this.mat[i][j];
-            res[i] = temp;
+            res[i][0] = temp;
         }
-        return res;
+        return new Matrix(res);
     }
 
     /**
      * 按列求和
      * @return 一维数组
      */
-    public double[] sum_by_column() {
-        double[] res = new double[this.column];
+    public Matrix sum_by_column() {
+        double[][] res = new double[1][this.column];
         for(int i = 0; i < this.column; i++) {
             double temp = 0;
             for(int j = 0; j < this.row; j++)
                 temp += this.mat[i][j];
-            res[i] = temp;
+            res[0][i] = temp;
         }
-        return res;
+        return new Matrix(res);
     }
 
     /**
@@ -471,8 +507,9 @@ public class Matrix {
             c = c.trim().substring(0, c.length() - 1);
         }
         /* 判断模式:
-            1-如果还有",",则是选取特定位置的值
+            1-如果含有",",则是选取特定位置的值
             2-如果含有":",则是以等差数列的形式取值
+            3-只有一个数字
          */
         double[][] new_mat = null;
         if (r.contains(",")) {
@@ -484,14 +521,14 @@ public class Matrix {
                 for(int i = 0; i < r_arr.length; i++) {
                     for (int j = 0; j < c_arr.length; j++) {
                         try {
-                            new_mat[i][j] = this.mat[Integer.parseInt(r_arr[i].trim())][Integer.parseInt(c_arr[j].trim())];
+                            new_mat[i][j] = this.mat[Integer.parseInt(r_arr[i].trim())-1][Integer.parseInt(c_arr[j].trim())-1];
                         } catch (Exception e) {
                             System.out.println("下标超出矩阵范围！");
                             System.exit(-1);
                         }
                     }
                 }
-            } else {
+            } else if (c.contains(":")){
                 // 情况2 ==> 行为特定位置,列为等差数列
                 String[] c_arr = c.trim().split(":"); // c_arr[0]为起始位置,c_arr[1]为递增量,c_arr[2]为结束位置
                 // 若c_arr的长度为2，则递增量为0(下标相差1)
@@ -509,15 +546,26 @@ public class Matrix {
                 for(int i = 0; i < r_arr.length; i++) {
                     for(int j = 0; j < (end - start) / val + 1; j++) {
                         try {
-                            new_mat[i][j] = this.mat[Integer.parseInt(r_arr[i].trim())][start + j*val];
+                            new_mat[i][j] = this.mat[Integer.parseInt(r_arr[i].trim())-1][start + j*val -1];
                         } catch (Exception e) {
                             System.out.println("下标超出矩阵范围！");
                             System.exit(-1);
                         }
                     }
                 }
+            } else {
+                int c_arr = Integer.parseInt(c);
+                new_mat = new double[r_arr.length][1];
+                for(int i = 0; i < r_arr.length; i++) {
+                    try {
+                        new_mat[i][0] = this.mat[Integer.parseInt(r_arr[i].trim()) - 1][0];
+                    } catch (Exception e) {
+                        System.out.println("下标超出矩阵范围！");
+                        System.exit(-1);
+                    }
+                }
             }
-        } else {
+        } else if (c.contains(":")){
             String[] r_arr = r.trim().split(":");
             int r_start = 0, r_val = 0, r_end = 0;
             if (r_arr.length == 2) {
@@ -535,14 +583,14 @@ public class Matrix {
                 for(int i = 0; i < (r_end - r_start) / r_val + 1; i++) {
                     for(int j = 0; j < c_arr.length; j++) {
                         try {
-                            new_mat[i][j] = this.mat[r_start + i*r_val][Integer.parseInt(c_arr[j].trim())];
+                            new_mat[i][j] = this.mat[r_start + i*r_val -1][Integer.parseInt(c_arr[j].trim())-1];
                         } catch (Exception e) {
                             System.out.println("下标超出矩阵范围！");
                             System.exit(-1);
                         }
                     }
                 }
-            } else {
+            } else if (c.contains(":")){
                 String[] c_arr = c.trim().split(":"); // c_arr[0]为起始位置,c_arr[1]为递增量,c_arr[2]为结束位置
                 int c_start = 0, c_val = 0, c_end = 0;
                 if (c_arr.length == 2) {
@@ -558,16 +606,80 @@ public class Matrix {
                 for(int i = 0; i < (r_end - r_start) / r_val + 1; i++) {
                     for(int j = 0; j < (c_end - c_start) / c_val + 1; j++) {
                         try {
-                            new_mat[i][j] = this.mat[r_start + i*r_val][c_start + j*c_val];
+                            new_mat[i][j] = this.mat[r_start + i*r_val -1][c_start + j*c_val -1];
                         } catch (Exception e) {
                             System.out.println("下标超出矩阵范围！");
                             System.exit(-1);
                         }
                     }
                 }
+            } else {
+                int c_arr = Integer.parseInt(c);
+                new_mat = new double[r_arr.length][1];
+                for(int i = 0; i < r_arr.length; i++) {
+                    try {
+                        new_mat[i][0] = this.mat[r_start + i*r_val -1][0];
+                    } catch (Exception e) {
+                        System.out.println("下标超出矩阵范围！");
+                        System.exit(-1);
+                    }
+                }
+            }
+        } else {
+            int r_arr = Integer.parseInt(r);
+            if (c.contains(",")) {
+                String[] c_arr = c.trim().split(",");
+                new_mat = new double[0][c_arr.length];
+                for(int i = 0; i < c_arr.length; i++) {
+                    try {
+                        new_mat[0][i] = this.mat[0][i];
+                    } catch (Exception e) {
+                        System.out.println("下标超出矩阵范围！");
+                        System.exit(-1);
+                    }
+                }
+            } else {
+                String[] c_arr = c.trim().split(":"); // c_arr[0]为起始位置,c_arr[1]为递增量,c_arr[2]为结束位置
+                int c_start = 0, c_val = 0, c_end = 0;
+                if (c_arr.length == 2) {
+                    c_start = Integer.parseInt(c_arr[0].trim());
+                    c_val = 1;
+                    c_end = Integer.parseInt(c_arr[1].trim());
+                } else {
+                    c_start = Integer.parseInt(c_arr[0].trim());
+                    c_val = Integer.parseInt(c_arr[1].trim()) + 1;
+                    c_end = Integer.parseInt(c_arr[2].trim());
+                }
+                new_mat = new double[0][(c_end - c_start) / c_val + 1];
+                for(int i = 0; i < (c_end - c_start) / c_val + 1; i++) {
+                    try {
+                        new_mat[0][i] = this.mat[0][c_start + i * c_val - 1];
+                    } catch (Exception e) {
+                        System.out.println("下标超出矩阵范围！");
+                        System.exit(-1);
+                    }
+                }
             }
         }
         return new Matrix(new_mat);
+    }
+
+    /**
+     * 返回矩阵中的一个元素
+     * @param r
+     * @param c
+     * @return
+     */
+    public double elem(String r, String c) {
+        int a = Integer.parseInt(r);
+        int b = Integer.parseInt(c);
+        a--;
+        b--;
+        if (this.row < a || this.column < b)
+            throw new ArrayIndexOutOfBoundsException("下标超出矩阵维度！");
+        if (a < 0 || b < 0)
+            throw new ArrayIndexOutOfBoundsException("请输入正确的下标！");
+        return this.mat[a][b];
     }
 
     /**
