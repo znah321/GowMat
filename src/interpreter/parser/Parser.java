@@ -2,10 +2,8 @@ package interpreter.parser;
 
 import GowMat.*;
 import GowMat.util.MatrixMath;
+import exception.*;
 import exception.ArithmeticException;
-import exception.SyntaxErrorException;
-import exception.VariableNotFoundException;
-import exception.VariableTypeException;
 import interpreter.lexer.Lexer;
 import interpreter.lexer.Token;
 import interpreter.lexer.Type;
@@ -14,44 +12,71 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public class Parser {
-    private Lexer lexer = null;
+    private Lexer lexer;
+    private List<Token> tokenList;
     private Map<String, Token> varPool = new HashMap<>(); // 变量池，key为变量名，value为变量值
     private Map<String, Token> lite_varPool = new HashMap<>(); // 字面量变量池
     private Map<String, Token> t_varPool = new HashMap<>(); // 域变量池
+    private Map<String[], CustomFunc> customFunc = new HashMap<>(); // 自定义函数，key为[函数名，参数个数]
     protected enum SentType { // 语句类型
         eval, // 赋值语句，有"="且没有"=="
         other; // 其他语句
     }
 
+    /**
+     * 用于主函数的运行时构造Parser
+     * @param lexer
+     */
     public Parser(Lexer lexer) {
         this.lexer = lexer;
+        this.tokenList = this.lexer.getTokens();
     }
 
-    // 解释器
+    /**
+     * 用于自定义函数运行时构造Parser
+     * @param tokenList
+     */
+    public Parser(List<Token> tokenList) {
+        this.tokenList = tokenList;
+    }
+
+    /**
+     * 解释器
+     */
     public void parse() {
-        List<Token> tokenList = this.lexer.getTokens();
+        this.tokenList = this.scan_customFunc(this.tokenList);
         int start_ind = 0; // 起始行标
         boolean reach_end = false; // 到达文件结尾的标志
         int start_pos = 0;
         while (!reach_end) {
             /* 1-获取一行的Token */
-            List<Token> l_token = new ArrayList<Token>(); // 当前行的Token列表
-            for (int i = start_pos; i < tokenList.size(); i++) {
-                if (tokenList.get(i).getLine() == start_ind + 1)
-                    l_token.add(tokenList.get(i).clone());
-                else if (tokenList.get(i).isEOF())
+            List<Token> l_token = new ArrayList<>(); // 当前行的Token列表
+            for (int i = start_pos; i < this.tokenList.size(); i++) {
+                if (this.tokenList.get(i).getLine() == start_ind + 1)
+                    l_token.add(this.tokenList.get(i).clone());
+                else if (this.tokenList.get(i).isEOF())
                     reach_end = true;
                 else
                     break;
             }
+            /* 排除异常情况：l_token里面只有一个EOL或l_token为空
+                导致这种情况的原因是出现了空行
+             */
+            if ((l_token.size() == 1 && l_token.get(0).isEOL()) || l_token.isEmpty()) {
+                start_ind++;
+                start_pos += l_token.size();
+                continue;
+            }
+
 
             /* 2-确定语句类型 */
-            SentType type = setSentType(this.lexer.getSource_code().get(start_ind), l_token);
+            SentType type = setSentType(l_token);
             System.out.println("--------------------------------第" + (start_ind + 1) + "行---------------------------");
             start_ind++;
             start_pos += l_token.size();
 
             /* 3-处理这一行的Token（赋值语句的情况） */
+            String[] returns = null; // 用于处理多返回值的情况
             if (type == SentType.eval) {
                 // 找到"="的位置
                 int eval_pos = 0;
@@ -59,6 +84,31 @@ public class Parser {
                     if (l_token.get(i).getContent().equals("=")) {
                         eval_pos = i;
                         break;
+                    }
+                }
+                if (eval_pos == 0) {
+                    String msg = "\n\t第" + l_token.get(0).getLine() + "行：" + "请检查等号的左边是否有变量！";
+                    throw new SyntaxErrorException(msg);
+                }
+
+                // 统计返回值个数
+                int returns_cnt = 0;
+                if (eval_pos == 1)
+                    returns_cnt = 1;
+                else {
+                    // Step 1-拼接"="前面的字符串
+                    StringBuffer returns_string = new StringBuffer();
+                    for(int i = 0; i < eval_pos; i++)
+                        returns_string.append(l_token.get(i).getContent());
+                    // Step 2-判断返回值格式是否符合语法。如果不符合就抛出异常
+                    String regexPat = "\\[([a-zA-Z_][a-zA-Z_0-9]*)(,[\\s]*[a-zA-Z_][a-zA-Z_0-9]*)*\\]";
+                    if (!Pattern.matches(regexPat, returns_string)) {
+                        String msg = "\n\t第" + l_token.get(0).getLine() + "行：" + "返回值格式错误！";
+                        throw new SyntaxErrorException(msg);
+                    } else {
+                        returns_string = returns_string.deleteCharAt(returns_string.length() - 1).deleteCharAt(0); // 去掉"["、"]"
+                        returns = returns_string.toString().split(",");
+                        returns_cnt = returns.length;
                     }
                 }
             /*
@@ -98,43 +148,36 @@ public class Parser {
                 for (int i = eval_pos + 1; i < l_token.size(); i++)
                     infix_expr.add(l_token.get(i).clone());
                 List<Token> suffix_expr = this.infix_to_suffix(infix_expr);
-                Token res = this.cal_suffix(suffix_expr, SentType.eval);
+                Token[] res = this.cal_suffix(suffix_expr, SentType.eval, returns_cnt);
                 /* 将计算结果赋给变量 */
-                String varName = l_token.get(0).getContent();
-                if (this.varPool.containsKey(varName)) {
-                    this.varPool.get(varName).setContent(this.getVarValue(res));
-                    if (res.isLiteNum())
-                        this.varPool.get(varName).setType(Type.num);
-                    else
-                        this.varPool.get(varName).setType(Type.mat);
-                }
-                else {
-                    Token t;
-                    if (res.isLiteNum())
-                        t = new Token(Type.num, this.getVarValue(res), l_token.get(0).getLine());
-                    else
-                        t = new Token(Type.mat, this.getVarValue(res), l_token.get(0).getLine());
-                    this.varPool.put(varName, t);
-                    ///////////////
-                    System.out.print(varName + " = ");
-                    if (this.varPool.get(varName).isNum())
-                        System.out.println(t.getContent());
-                    else {
-                        System.out.println();
-                        new Matrix(t.getContent()).display();
+                // 1-返回值为单个变量
+                if (returns_cnt == 1) {
+                    this.eval(l_token.get(0), res[0]);
+                // 2-返回值为多个变量
+                } else {
+                    int cnt = 0;
+                    for(int i = 0; i < eval_pos; i++) {
+                        // 找到变量对应的Token位置
+                        if (l_token.get(i).getContent().equals(returns[cnt])) {
+                            this.eval(l_token.get(i), res[cnt]);
+                            cnt++;
+                        }
+                        if (cnt == returns_cnt)
+                            break;
                     }
                 }
                 // 清空字面量变量池
                 this.lite_varPool.clear();
+
             } else {
                 /* 其他类型语句的情况 */
                 Token key = l_token.get(0); // 第一个Token一定是关键字
-                ParserFunc func = new ParserFunc(this);
+                ParserFunc func = new ParserFunc(this, 0);
                 switch (key.getContent()) {
                     case "print":
                         List<Token> suffix_expr = this.infix_to_suffix(l_token);
-                        Token res = this.cal_suffix(suffix_expr, SentType.other);
-                        func.print(res);
+                        Token res = this.cal_suffix(suffix_expr, SentType.other, 0)[0];
+                        func.run(key, res);
                         break;
                 }
             }
@@ -143,8 +186,41 @@ public class Parser {
         System.out.println("calculate over");
     }
 
-    // 设置语句类型
-    public static SentType setSentType(String sentence, List<Token> list) {
+    /**
+     * 给一个变量赋值
+     * @param var_token
+     * @param res
+     */
+    public void eval(Token var_token, Token res) {
+        String varName = var_token.getContent();
+        if (this.varPool.containsKey(varName)) {
+            this.varPool.get(varName).setContent(this.getVarValue(res));
+            if (res.isLiteNum())
+                this.varPool.get(varName).setType(Type.num);
+            else
+                this.varPool.get(varName).setType(Type.mat);
+        } else {
+            Token t;
+            if (res.isLiteNum())
+                t = new Token(Type.num, this.getVarValue(res), var_token.getLine());
+            else
+                t = new Token(Type.mat, this.getVarValue(res), var_token.getLine());
+            this.varPool.put(varName, t);
+            ///////////////
+            System.out.print(varName + " = ");
+            if (this.varPool.get(varName).isNum())
+                System.out.println(t.getContent());
+            else {
+                System.out.println();
+                new Matrix(t.getContent()).display();
+            }
+        }
+    }
+
+    /**
+     * 设置语句类型
+      */
+    public static SentType setSentType(List<Token> list) {
         if (list.get(0).isIdtf()) {
             if (list.get(1).getContent().equals("="))
                 return SentType.eval;
@@ -152,11 +228,20 @@ public class Parser {
                 String msg = "\n\t第" + list.get(0).getLine() + "行：" + "语法错误！";
                 throw new SyntaxErrorException(msg);
             }
+        } else {
+            for(Token item : list) {
+                if (item.getContent().equals("="))
+                    return SentType.eval;
+            }
+            return SentType.other;
         }
-        return SentType.other;
     }
 
-    // 中缀表达式转后缀表达式
+    /**
+     * 中缀表达式转后缀表达式
+     * @param expr
+     * @return
+     */
     public List<Token> infix_to_suffix(List<Token> expr){
         List<Token> suffix_expr = new ArrayList<Token>(); // 转换结果
         Stack<Token> s = new Stack<>();
@@ -333,7 +418,8 @@ public class Parser {
         }
 
         //test
-        System.out.println(this.lexer.getSource_code().get(expr.get(0).getLine() - 1));
+        if (this.lexer != null)
+            System.out.println(this.lexer.getSource_code().get(expr.get(0).getLine() - 1));
         System.out.println("转后缀表达式：");
         for(int i = 0; i < suffix_expr.size(); i++)
             System.out.print(suffix_expr.get(i).getContent() + " ");
@@ -341,8 +427,13 @@ public class Parser {
         return suffix_expr;
     }
 
-    // 后缀表达式求解
-    public Token cal_suffix(List<Token> expr, SentType type) {
+    /**
+     * 后缀表达式求解
+     * @param expr
+     * @param type
+     * @return
+     */
+    public Token[] cal_suffix(List<Token> expr, SentType type, int returns_cnt) {
         Token key = null; // 关键字Token（函数）
         List<Token> argv = new ArrayList<>(); // 函数的参数
         Stack<Object> optn_s = new Stack<>(); // 运算数的栈
@@ -350,6 +441,7 @@ public class Parser {
         String t2 = null; // 右运算数
         boolean has_comma = false; // 是否遇到了逗号，false代表没遇到，true代表遇到了
         List<Object> comma_res = new ArrayList<>(); // 逗号运算的结果
+        Token[] returns_token = null; // 返回值数组
         int line_idx = expr.get(0).getLine();
 
         for(int i = 0; i < expr.size(); i++) {
@@ -461,43 +553,153 @@ public class Parser {
                 has_comma = false;
 
                 // 调用函数计算
-                Token res = null;
-                ParserFunc func = new ParserFunc(this);
+                Token t_res = null;
+
                 String key_name = inst_t.getContent();
-                switch (key_name) {
-                    case "sum":
-                        res = func.sum(inst_t, argv);
-                        break;
-                    case "eye":
-                        res = func.eye(inst_t, argv);
-                        break;
-                    case "zeros":
-                    case "ones":
-                    case "random":
-                    case "randi":
-                        res = func.gene_a_matrix(inst_t, argv);
-                        break;
-                    case "print":
-                        if (argv.size() != 1) {
-                            String msg = "\n\t第" + line_idx + "行：" + "请检查print函数内的参数！";
-                            throw new SyntaxErrorException(msg);
-                        } else
-                            return argv.get(0);
+                /*
+                    出现多个返回值的情况，那么后缀表达式末尾的Token一定是一个函数
+                 */
+                if (i != expr.size() - 1) {
+                    t_res = this.callFunc(inst_t, argv, 0)[0];
+                    argv.clear();
+                    optn_s.push(t_res);
+                } else {
+                    String regexPat = "print"; // 待补充
+                    if (Pattern.matches(regexPat, inst_t.getContent())) {
+                        returns_token = new Token[1];
+                        returns_token[0] = argv.get(0);
+                        return returns_token;
+                    } else {
+                        returns_token = this.callFunc(inst_t, argv, returns_cnt);
+                        return returns_token;
+                    }
                 }
-                argv.clear();
-                optn_s.push(res);
             }
         }
         // 循环结束，计算结果就是栈顶的值
-        if (optn_s.peek().getClass() == Token.class)
-            return (Token) optn_s.pop();
+        if (optn_s.peek().getClass() == Token.class) {
+            returns_token = new Token[1];
+            returns_token[0] = (Token) optn_s.pop();
+            return returns_token;
+        }
         else {
             String msg = "\n\t第" + line_idx + "行：函数参数输入有误" + "！";
             throw new VariableTypeException(msg);
         }
     }
 
-    // 获取变量值
+    /**
+     * 扫描代码中的自定义函数
+     * @param origin_expr 经过词法分析的token列表
+     * @return 删除自定义函数部分的token列表，用于正式的计算
+     */
+    public List<Token> scan_customFunc(List<Token> origin_expr) {
+        int end_cnt = 0; // 统计"end"关键字出现的次数
+        int end_need = 1; // "end"关键字需要出现的次数
+        int line = 1;
+        boolean flag = false;
+        List<String> func_name = new ArrayList<>(); // 记录已经扫描到的函数名
+        List<Token> func_expr = new ArrayList<>();
+        List<Token> new_expr = new ArrayList<>();
+        /* 扫描函数 */
+        for(Token t : origin_expr) {
+            if (t.getContent().equals("function")) {
+                flag = true;
+                line = t.getLine();
+            }
+            if (t.isEOF() && end_cnt != end_need && flag) {
+                String msg = "\n\t第" + line + "行：自定义函数缺少end！";
+                throw new SyntaxErrorException(msg);
+            }
+
+            if (flag) {
+                if (end_cnt == end_need) {
+                    flag = false;
+                    func_expr.add(t);
+                    /* 把扫描到的函数放到custom_Func里面 */
+                    // 检查定义的函数名是否和内置函数名冲突
+                    String name = null;
+                    if (!func_expr.get(3).isKey()) {
+                        name = func_expr.get(3).getContent();
+                    } else {
+                        String msg = "\n\t第" + line + "行：" + func_expr.get(3).getContent() +"是内置函数，不能被定义为自定义函数！";
+                        throw new SyntaxErrorException(msg);
+                    }
+                    func_name.add(name);
+
+                    /* 统计参数个数 */
+                    String argv_string = "";
+                    int argc_size = 0;
+                    for(int i = 5; i < func_expr.size(); i++) {
+                        if (func_expr.get(i).getContent().equals(")")) {
+                            if (func_expr.get(i+2).getLine() == line) { // ")"后面就不能有任何字符了，减1是为了去掉每行末尾的换行符
+                                String msg = "\n\t第" + line + "行：" + "自定义函数存在非法字符！";
+                                throw new SyntaxErrorException(msg);
+                            } else
+                                break;
+                        }
+                        else
+                            argv_string += func_expr.get(i).getContent();
+                    }
+                    String[] argv = argv_string.split(",");
+                    // 判断一下参数是否符合输入格式
+                    for (String argc : argv) {
+                        if (!Pattern.matches("[a-zA-Z_][a-zA-Z_0-9]*", argc)) {
+                            String msg = "\n\t第" + line + "行：" + "参数的形式不合法，存在非法字符！";
+                            throw new SyntaxErrorException(msg);
+                        }
+                    }
+                    argc_size = argv.length;
+
+                    // 判断该函数是否已被定义
+                    String[] inst_key = {name, String.valueOf(argc_size)};
+                    if (containsKey(inst_key)) {
+                        String msg = "\n\t第" + line + "行：" + "函数" + name + "已被定义！";
+                        throw new SyntaxErrorException(msg);
+                    } else {
+                        CustomFunc func = new CustomFunc(name, argc_size, func_expr);
+                        this.customFunc.put(inst_key, func);
+                    }
+
+                    // 清空func_expr、end_cnt、end_need，用于检测下一个自定义函数
+                    func_expr.clear();
+                    end_cnt = 0;
+                    end_need = 1;
+                    continue;
+                }
+
+                if (Pattern.matches("if|while|for", t.getContent()))
+                    end_need++;
+                else if (t.getContent().equals("end"))
+                    end_cnt++;
+                func_expr.add(t);
+            } else
+                new_expr.add(t);
+        }
+        /*
+            此时new_expr中，自定义函数的类型还是identifier，需要改成custom_func
+         */
+        for(Token t : new_expr) {
+            if (func_name.contains(t.getContent()))
+                t.setType(Type.custom_func);
+        }
+        return new_expr;
+    }
+
+    private boolean containsKey(String[] inst_key) {
+        for(String[] key : this.customFunc.keySet()) {
+            if (Arrays.equals(key, inst_key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 获取变量值
+     * @param t
+     * @return
+     */
     public String getVarValue(Token t) {
         if (t.isLiteNum()) {
             if (this.lite_varPool.containsKey(t.getContent()))
@@ -522,6 +724,37 @@ public class Parser {
             String msg = "\n\t第" + t.getLine() + "行：" + "变量" + t.getContent() + "类型错误，请检查输入！";
             throw new VariableTypeException(msg);
         }
+    }
+
+    /**
+     * 调用内置函数
+     * @param key 函数Token
+     * @param argv 参数列表
+     * @param returns_cnt 该行的返回值个数，0代表当前函数不是后缀表达式中最末尾那个，不能出现多返回值的情况
+     * @return 计算结果
+     */
+    public Token[] callFunc(Token key, List<Token> argv, int returns_cnt) {
+        ParserFunc func = new ParserFunc(this, returns_cnt);
+        String key_name = key.getContent();
+        Token[] returns_token = null;
+        if (returns_cnt == -1) {
+            returns_token = null;
+            func.run(key, argv);
+            if (func.getResult().length != 1) {
+                String msg = "\n\t第" + key.getLine() + "行：返回值过多，无法计算" + "！";
+                throw new VariableTypeException(msg);
+            } else
+                returns_token = func.getResult();
+        } else {
+            String single_returns = "rank|det|trans|eye|zeros|ones|random|randi|diag|log|log2|ln|lg|sum"; // 只可能出现单返回值的函数
+            func.run(key, argv);
+            if (func.getResult().length != returns_cnt) {
+                String msg = "\n\t第" + key.getLine() + "行：返回值个数不匹配" + "！";
+                throw new VariableTypeException(msg);
+            } else
+                returns_token = func.getResult();
+        }
+        return returns_token;
     }
 
     /**
@@ -685,7 +918,10 @@ public class Parser {
         }
     }
 
-    // 生成字面量矩阵的Key
+    /**
+     * 生成字面量的Key
+     * @return
+     */
     public String geneName() {
         String name = "literals_" + String.valueOf(this.lite_varPool.size());
         return name;
@@ -708,6 +944,8 @@ public class Parser {
         this.varPool.put(t.getContent(), new_t);
     }
 
+
+    // getter()
     public Lexer getLexer() {
         return lexer;
     }
