@@ -87,6 +87,8 @@ public class Token {
         return this.type == Type.end_of_file;
     }
 
+    public boolean isCustFunc() {return this.type == Type.custom_func; }
+
     // Setter and Getter
     public Type getType() {
         return type;
