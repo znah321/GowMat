@@ -3,6 +3,7 @@ package interpreter.lexer;
 public enum Type {
     identifier, // 标识符：变量名之类的 a ab _aaa
     key, // 关键字：内置的函数名，以及if、else等
+    custom_func, // 自定义函数
     operator, // 运算符：+ - * / % ^ .^ ./ .* ( ) [ ] , > < = >= <= || && | & :
     str_literals, // 字符串字面量 "hello gowmat"
     num_literals, // 数字字面量 1 2 34.5
