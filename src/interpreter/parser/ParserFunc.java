@@ -14,13 +14,50 @@ import java.util.regex.Pattern;
 // Gowmat内置函数类
 public class ParserFunc {
     private Parser parser;
+    private int returns_cnt;
+    private Token[] result;
 
-    public ParserFunc(Parser parser) {
+    public ParserFunc(Parser parser, int returns_cnt) {
         this.parser = parser;
+        this.returns_cnt = returns_cnt;
     }
 
+    public void run(Token key, Token argc) {
+        switch (key.getContent()) {
+            case "print":
+                this.print(argc);
+                break;
+        }
+    }
+
+    public void run(Token key, List<Token> argv) {
+        switch (key.getContent()) {
+            case "sum":
+                this.sum(key, argv);
+                break;
+            case "eye":
+                this.eye(key, argv);
+                break;
+            case "zeros":
+            case "ones":
+            case "random":
+            case "randi":
+                this.gene_a_matrix(key, argv);
+                break;
+        }
+    }
+
+    public Token[] getResult() {
+        return result;
+    }
+
+    /* 内置函数 */
     // 屏幕打印函数
-    protected void print(Token argc) {
+    private void print(Token argc) {
+        if (this.returns_cnt != 0) {
+            String msg = "\n\t第" + argc.getLine() + "行：" + "print函数不需要返回值！";
+            throw new SyntaxErrorException(msg);
+        }
         String str = this.parser.getVarValue(argc).substring(1, this.parser.getVarValue(argc).length()-1);
         char[] _ch_res = str.toCharArray();
         String res = "";
@@ -37,7 +74,7 @@ public class ParserFunc {
     }
 
     // 求和函数
-    protected Token sum(Token key, List<Token> argv) {
+    private void sum(Token key, List<Token> argv) {
         Matrix _t_mat = null;
         double _t_num = 0;
         String msg = null;
@@ -51,6 +88,12 @@ public class ParserFunc {
             throw new SyntaxErrorException(msg);
         } else if (argv.get(0).isIdtf() && !parser.getVarPool().containsKey(argv.get(0).getContent())) {
             msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + "变量不存在" + "！";
+            throw new SyntaxErrorException(msg);
+        } else if (this.returns_cnt < 1) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + "sum函数的缺少返回值" + "！";
+            throw new SyntaxErrorException(msg);
+        } else if (this.returns_cnt > 3) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + "sum函数的返回值过多" + "！";
             throw new SyntaxErrorException(msg);
         }
 
@@ -66,13 +109,15 @@ public class ParserFunc {
                 String name = parser.geneName();
                 Token t = new Token(Type.num_literals, parser.getVarValue(mat), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             }
             if (mat.isLiteNum()) {
                 String name = parser.geneName();
                 Token t = new Token(Type.num_literals, parser.getVarValue(mat), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             }
             // 矩阵只有一行或一列
             Matrix m = new Matrix(this.parser.getVarValue(mat));
@@ -80,13 +125,15 @@ public class ParserFunc {
                 String name = parser.geneName();
                 Token t = new Token(Type.num_literals, String.valueOf(m.sum()), key.getLine());
                 this.parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             } else {
                 // 默认按行求和
                 String name = parser.geneName();
                 Token t = new Token(Type.mat_literals, m.sum_by_row().toToken(), key.getLine());
                 this.parser.getLite_varPool().put(name, t);
-                return new Token(Type.mat_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             }
         } else {
             if (!this.isNumerical(argv.get(1))) {
@@ -100,18 +147,51 @@ public class ParserFunc {
                 String name = parser.geneName();
                 Token t = new Token(Type.num_literals, parser.getVarValue(mat), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             }
             if (mat.isLiteNum()) {
                 String name = parser.geneName();
                 Token t = new Token(Type.num_literals, parser.getVarValue(mat), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.num_literals, name, key.getLine());
             }
 
             Matrix m = new Matrix(parser.getVarValue(mat));
             int sum_argc = getInteger(this.getNum(argc), key);
             /* 1-按行求和    2-按列求和    3-所有元素求和 */
+            ///////////////////////////////////////////////test
+            if (sum_argc == 4) {
+                this.result = new Token[2];
+
+                String name = this.parser.geneName();
+                _t_mat = m.sum_by_row();
+                if (_t_mat == null) {
+                    Token t = new Token(Type.num_literals, String.valueOf(_t_num), key.getLine());
+                    parser.getLite_varPool().put(name, t);
+                    this.result[0] = new Token(Type.mat_literals, name, key.getLine());
+                } else {
+                    Token t = new Token(Type.mat_literals, _t_mat.toToken(), key.getLine());
+                    parser.getLite_varPool().put(name, t);
+                    this.result[0] = new Token(Type.mat_literals, name, key.getLine());
+                }
+
+                name = this.parser.geneName();
+                _t_mat = m.sum_by_column();
+                if (_t_mat == null) {
+                    Token t = new Token(Type.num_literals, String.valueOf(_t_num), key.getLine());
+                    parser.getLite_varPool().put(name, t);
+                    this.result[1] = new Token(Type.mat_literals, name, key.getLine());
+                } else {
+                    Token t = new Token(Type.mat_literals, _t_mat.toToken(), key.getLine());
+                    parser.getLite_varPool().put(name, t);
+                    this.result[1] = new Token(Type.mat_literals, name, key.getLine());
+                }
+                return;
+                //////////////////////////////////////////
+            }
+
             if (sum_argc == 1)
                 _t_mat = m.sum_by_row();
             else if (sum_argc == 2)
@@ -122,17 +202,19 @@ public class ParserFunc {
             if (_t_mat == null) {
                 Token t = new Token(Type.num_literals, String.valueOf(_t_num), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.num_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.mat_literals, name, key.getLine());
             } else {
                 Token t = new Token(Type.mat_literals, _t_mat.toToken(), key.getLine());
                 parser.getLite_varPool().put(name, t);
-                return new Token(Type.mat_literals, name, key.getLine());
+                this.result = new Token[1];
+                this.result[0] = new Token(Type.mat_literals, name, key.getLine());
             }
         }
     }
 
     // 创建单位矩阵
-    protected Token eye(Token key, List<Token> argv) {
+    private void eye(Token key, List<Token> argv) {
         Matrix _t_mat = null;
         int n = 0;
         String msg = null;
@@ -149,6 +231,12 @@ public class ParserFunc {
                 msg = "\n\t第" + key.getLine() + "行：请检查eye函数输入的参数的类型" + "！";
                 throw new SyntaxErrorException(msg);
             }
+        } else if (this.returns_cnt < 1) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + "eye函数的缺少返回值" + "！";
+            throw new SyntaxErrorException(msg);
+        } else if (this.returns_cnt > 1) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + "eye函数的返回值过多" + "！";
+            throw new SyntaxErrorException(msg);
         }
         n = getInteger(this.getNum(argv.get(0)), key); // 判断参数是否为整数
         
@@ -156,11 +244,12 @@ public class ParserFunc {
         String name = parser.geneName();
         Token t = new Token(Type.mat_literals, _t_mat.toToken(), key.getLine());
         this.parser.getLite_varPool().put(name, t);
-        return new Token(Type.mat_literals, name, key.getLine());
+        this.result = new Token[1];
+        this.result[0] = new Token(Type.mat_literals, name, key.getLine());
     }
 
     // 生成一个矩阵（zeros，ones, random, randi)
-    protected Token gene_a_matrix(Token key, List<Token> argv) {
+    private void gene_a_matrix(Token key, List<Token> argv) {
         Matrix _t_mat = null;
         String msg = null;
         /* 检查参数合法性 */
@@ -186,6 +275,15 @@ public class ParserFunc {
                 throw new SyntaxErrorException(msg);
             }
         }
+        // 返回值个数
+        if (this.returns_cnt < 1) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + key.getContent() + "函数的缺少返回值" + "！";
+            throw new SyntaxErrorException(msg);
+        } else if (this.returns_cnt > 1) {
+            msg = "\n\t第" + key.getLine() + "行：" + argv.get(0).getContent() + key.getContent() + "函数的返回值过多" + "！";
+            throw new SyntaxErrorException(msg);
+        }
+
         // 参数类型
         if (!this.isAllNumerical(argv)) {
             msg = "\n\t第" + key.getLine() + "行：请检查" + key.getContent() + "函数输入的参数类型" + "！";
@@ -245,7 +343,8 @@ public class ParserFunc {
         String name = parser.geneName();
         Token t = new Token(Type.mat_literals, _t_mat.toToken(), key.getLine());
         this.parser.getLite_varPool().put(name, t);
-        return new Token(Type.mat_literals, name, key.getLine());
+        this.result = new Token[1];
+        this.result[0] = new Token(Type.mat_literals, name, key.getLine());
     }
 
     /* 工具函数 */
