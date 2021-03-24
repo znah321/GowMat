@@ -1,7 +1,26 @@
-B = 2 - [1,1;1,1] + [2,2;2,2] +
-M= 1 + 2*3 - 4 + 5*6
+M=1 + 2*3 - 4 + 5*6
+X = eye(3)
+[a,b]=sum(X,4)
 print("M="+ (1 + 2*3 - 4 + 5*6))
-A = sum(B,sum(M,3)-30) + B([1,2],1)
-X = randi(3,4,1, 20)
-Y = sum(X)
-Z = sum(1)
+function res = func(a,b)
+    if true
+        print('this is a function')
+    end
+    res = a;
+end
+
+
+
+
+
+
+
+function res = func(a)
+a = 1
+
+
+
+
+
+
+end
