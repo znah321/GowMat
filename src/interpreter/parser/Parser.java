@@ -1,13 +1,17 @@
 package interpreter.parser;
 
-import GowMat.*;
+import GowMat.Matrix;
 import GowMat.util.MatrixMath;
-import exception.*;
 import exception.ArithmeticException;
+import exception.SyntaxErrorException;
+import exception.VariableNotFoundException;
+import exception.VariableTypeException;
 import interpreter.lexer.Lexer;
 import interpreter.lexer.Token;
 import interpreter.lexer.Type;
+import interpreter.parser.util.ParserUtil;
 
+import java.sql.Struct;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -16,8 +20,9 @@ public class Parser {
     private List<Token> tokenList;
     private Map<String, Token> varPool = new HashMap<>(); // 变量池，key为变量名，value为变量值
     private Map<String, Token> lite_varPool = new HashMap<>(); // 字面量变量池
-    private Map<String, Token> t_varPool = new HashMap<>(); // 域变量池
     private Map<String[], CustomFunc> customFunc = new HashMap<>(); // 自定义函数，key为[函数名，参数个数]
+
+    private boolean reach_logic_loop; // 是否遇到了if、elseif、for、while
     protected enum SentType { // 语句类型
         eval, // 赋值语句，有"="且没有"=="
         other; // 其他语句
@@ -45,39 +50,32 @@ public class Parser {
      */
     public void parse() {
         this.tokenList = this.scan_customFunc(this.tokenList);
-        int start_ind = 0; // 起始行标
+        int start_ind = 1; // 起始行标
         boolean reach_end = false; // 到达文件结尾的标志
-        int start_pos = 0;
         while (!reach_end) {
             /* 1-获取一行的Token */
             List<Token> l_token = new ArrayList<>(); // 当前行的Token列表
-            for (int i = start_pos; i < this.tokenList.size(); i++) {
-                if (this.tokenList.get(i).getLine() == start_ind + 1)
-                    l_token.add(this.tokenList.get(i).clone());
-                else if (this.tokenList.get(i).isEOF())
-                    reach_end = true;
-                else
-                    break;
-            }
+            l_token = ParserUtil.get_line_tokens(this.tokenList, start_ind);
             /* 排除异常情况：l_token里面只有一个EOL或l_token为空
                 导致这种情况的原因是出现了空行
              */
             if ((l_token.size() == 1 && l_token.get(0).isEOL()) || l_token.isEmpty()) {
                 start_ind++;
-                start_pos += l_token.size();
                 continue;
             }
+            if (l_token.get(0).isEOF())
+                reach_end = true;
 
 
             /* 2-确定语句类型 */
             SentType type = setSentType(l_token);
-            System.out.println("--------------------------------第" + (start_ind + 1) + "行---------------------------");
+            System.out.println("--------------------------------第" + (start_ind) + "行---------------------------");
             start_ind++;
-            start_pos += l_token.size();
 
             /* 3-处理这一行的Token（赋值语句的情况） */
             String[] returns = null; // 用于处理多返回值的情况
             if (type == SentType.eval) {
+                this.reach_logic_loop = false;
                 // 找到"="的位置
                 int eval_pos = 0;
                 for (int i = 0; i < l_token.size(); i++) {
@@ -173,12 +171,196 @@ public class Parser {
                 /* 其他类型语句的情况 */
                 Token key = l_token.get(0); // 第一个Token一定是关键字
                 ParserFunc func = new ParserFunc(this, 0);
+                if (!l_token.get(0).equals("if") && !l_token.get(0).equals("elseif"))
+                    this.reach_logic_loop = false;
                 switch (key.getContent()) {
                     case "print":
                         List<Token> suffix_expr = this.infix_to_suffix(l_token);
                         Token res = this.cal_suffix(suffix_expr, SentType.other, 0)[0];
                         func.run(key, res);
                         break;
+                    case "if":
+                    case "elseif":
+                        this.reach_logic_loop = true;
+                        /*
+                            Step-1: 检查end是否对齐
+                                多出来的end会单独当做异常进行处理，因此不需要考虑end有多余的情况
+                         */
+                        int end_cnt = 0; // end的计数
+                        int end_need = 1; // end需要的个数
+                        int pos = ParserUtil.getIndex(this.tokenList, key) + 1;
+                        while (pos < this.tokenList.size() && end_cnt != end_need) {
+                            Token inst_t = this.tokenList.get(pos);
+                            if (Pattern.matches("if|while|for", inst_t.getContent()))
+                                end_need++;
+                            if (inst_t.getContent().equals("end"))
+                                end_cnt++;
+                            pos++;
+                        }
+                        if (pos == this.tokenList.size()) {
+                            String msg = "\n\t第" + l_token.get(0).getLine() + "行：" + "缺少end！";
+                            throw new SyntaxErrorException(msg);
+                        }
+
+                        /* Step-2: 获取需要进行判断的条件 */
+                        String logic_regex = "&&|&|\\||\\|\\|";
+                        // 1-统计逻辑关系符的个数及类型
+                        List<String> logic_optr = new ArrayList<>();
+                        for(Token token : l_token) {
+                            if (Pattern.matches(logic_regex, token.getContent()))
+                                logic_optr.add(token.getContent());
+                        }
+
+                        // 2-根据逻辑关系符进行切割，获取条件
+                        List<List<Token>> raw_conditions = new ArrayList<>();
+                        for(int i = 1; i < l_token.size() - 1; i++) {
+                            List<Token> t_condition = new ArrayList<>();
+                            int j = i;
+                            for (; j < l_token.size() - 1; j++) {
+                                if (Pattern.matches(logic_regex, l_token.get(j).getContent()))
+                                    break;
+                                else
+                                    t_condition.add(l_token.get(j).clone());
+                            }
+                            raw_conditions.add(t_condition);
+                            i = j;
+                        }
+
+
+                        // 3-对条件进行加工，去掉多余的括号（直接进行切割的话，括号有可能没对齐，但一定是相差一个）
+                        List<List<Token>> conditions = new ArrayList<>(); // 经处理后的条件
+                        for(List<Token> cond : raw_conditions) {
+                            String cond_string = ParserUtil.getString(cond);
+                            int left_bracket_cnt = 0; // 左括号计数
+                            int right_bracket_cnt = 0; // 右括号计数
+
+                            left_bracket_cnt = cond_string.length() - cond_string.replaceAll("\\(", "").length();
+                            right_bracket_cnt = cond_string.length() - cond_string.replaceAll("\\)", "").length();
+                            if (Math.abs(left_bracket_cnt - right_bracket_cnt) > 1) {
+                                String msg = "\n\t第" + l_token.get(0).getLine() + "行：" + "请检查括号是否对齐！";
+                                throw new SyntaxErrorException(msg);
+                            } else if (Math.abs(left_bracket_cnt - right_bracket_cnt) == 1) {
+                                if (left_bracket_cnt < right_bracket_cnt) {
+                                    cond.remove(cond.size() - 1);
+                                    conditions.add(cond);
+                                }
+                                else {
+                                    cond.remove(0);
+                                    conditions.add(cond);
+                                }
+                            } else {
+                                if (Math.abs(left_bracket_cnt - right_bracket_cnt) == 0)
+                                    conditions.add(cond);
+                            }
+                        }
+
+                        /* Step-3: 获取判断符，对每个条件根据判断符切割，分别计算两边的结果，判断是否成立 */
+                        String success_regex = ">|<|=|>=|<=|==|~=";
+                        boolean[] is_true = new boolean[conditions.size()]; // 每个条件的结果
+                        pos = 0;
+                        // 1-获取判断符
+                        Token[] adjust_optr = new Token[conditions.size()];
+                        for(Token token : l_token) {
+                            if (Pattern.matches(success_regex, token.getContent()))
+                                adjust_optr[pos++] = token;
+                        }
+                        pos = 0;
+
+                        for(int i = 0; i < conditions.size(); i++) {
+                            boolean logic_flag = false;
+                            Token[] expr_res = new Token[2]; // 两边待计算的式子的结果
+                            List<Token> cond = conditions.get(i);
+                            int adjust_pos = ParserUtil.getIndex(cond, adjust_optr[i]); // 判断符出现的位置
+
+                            // 2-拼接式子对应的Token列表
+                            List<Token> left_expr_tokenlist = new ArrayList<>(); // 左边的
+                            List<Token>  right_expr_tokenlist = new ArrayList<>(); // 右边的
+                            for(int j = 0; j < cond.size(); j++) {
+                                if (j < adjust_pos)
+                                    left_expr_tokenlist.add(cond.get(j));
+                                if (j > adjust_pos)
+                                    right_expr_tokenlist.add(cond.get(j));
+                            }
+
+                            // 3-计算
+                            expr_res[0] = this.cal_suffix(this.infix_to_suffix(left_expr_tokenlist), SentType.eval, 1)[0];
+                            expr_res[1] = this.cal_suffix(this.infix_to_suffix(right_expr_tokenlist), SentType.eval, 1)[0];
+
+                            // 4-判断当前成立
+                            switch (adjust_optr[i].getContent()) {
+                                case "==":
+                                    if (this.equals(expr_res[0], expr_res[1]))
+                                        is_true[i] = true;
+                                    else
+                                        is_true[i] = false;
+                                    break;
+                                case "~=":
+                                    if (!this.equals(expr_res[0], expr_res[1]))
+                                        is_true[i] = true;
+                                    else
+                                        is_true[i] = false;
+                            }
+                        }
+
+                        /* Step-4: 计算最终结果 */
+                        // 1-构造由true、false构成的中缀表达式
+                        String infix = ParserUtil.getString(l_token, 1, l_token.size() - 1);
+                        for(int i = 0; i < conditions.size(); i++) {
+                            if (is_true[i])
+                                infix = infix.replace(ParserUtil.getString(conditions.get(i)), "1");
+                            else
+                                infix = infix.replace(ParserUtil.getString(conditions.get(i)), "0");
+                        }
+                        infix = infix.replaceAll("&&", "&").replaceAll("\\|\\|", "\\|");
+
+                        // 2-中缀表达式转后缀表达式
+                        StringBuilder suffix = new StringBuilder();
+                        Stack<Character> s = new Stack<>();
+                        for(int i = 0; i < infix.length(); i++) {
+                            if (infix.charAt(i) == '1' || infix.charAt(i) == '0')
+                                suffix.append(infix.charAt(i));
+                            else if (infix.charAt(i) == '(')
+                                s.push(infix.charAt(i));
+                             else if (infix.charAt(i) == ')') {
+                                while (s.peek() != '(')
+                                    suffix.append(s.pop());
+                                s.pop();
+                            } else {
+                                 if (!s.empty() && s.peek() != '(')
+                                    suffix.append(s.pop());
+                                 s.push(infix.charAt(i));
+                            }
+                        }
+                        while (!s.empty())
+                            suffix.append(s.pop());
+
+                        // 3-计算后缀表达式
+                        boolean can_continue = false;
+                        int c1, c2;
+                        for(int i = 0; i < suffix.length(); i++) {
+                            if (suffix.charAt(i) == '&' || suffix.charAt(i) == '|') {
+                                c1 = suffix.charAt(i - 2) - 48;
+                                c2 = suffix.charAt(i - 1) - 48;
+                                switch (suffix.charAt(i)) {
+                                    case '&':
+                                        suffix = suffix.delete(0, i + 1);
+                                        suffix.insert(0, c1 & c2);
+                                    case '|':
+                                        suffix = suffix.delete(0, i + 1);
+                                        suffix.insert(0, c1 | c2);
+                                }
+                            }
+                        }
+                        if (suffix.charAt(0) == '0')
+                            can_continue = false;
+                        else
+                            can_continue = true;
+
+                        /* Step 5-判断是否可以继续运行 */
+                        this.lite_varPool.clear();
+                        for(List<Token> a :conditions)
+                            System.out.println(ParserUtil.getString(a));
+                        System.out.println("if_lalala");
                 }
             }
         }
@@ -195,22 +377,29 @@ public class Parser {
         String varName = var_token.getContent();
         if (this.varPool.containsKey(varName)) {
             this.varPool.get(varName).setContent(this.getVarValue(res));
-            if (res.isLiteNum())
+            if (res.isLiteNum()) {
                 this.varPool.get(varName).setType(Type.num);
+            }
             else
                 this.varPool.get(varName).setType(Type.mat);
         } else {
             Token t;
-            if (res.isLiteNum())
+            if (res.isIdtf()) {
+                Type type = this.varPool.get(res.getContent()).getType();
+                t = new Token(type, this.getVarValue(res), var_token.getLine());
+            }
+            else if (res.isLiteNum() || res.isNum())
                 t = new Token(Type.num, this.getVarValue(res), var_token.getLine());
-            else
+            else if (res.isLiteMat() || res.isMat())
                 t = new Token(Type.mat, this.getVarValue(res), var_token.getLine());
+            else
+                t = new Token(Type.string, this.getVarValue(res), var_token.getLine());
             this.varPool.put(varName, t);
             ///////////////
             System.out.print(varName + " = ");
             if (this.varPool.get(varName).isNum())
                 System.out.println(t.getContent());
-            else {
+            else if (this.varPool.get(varName).isMat()){
                 System.out.println();
                 new Matrix(t.getContent()).display();
             }
@@ -366,12 +555,12 @@ public class Parser {
                             throw new SyntaxErrorException(msg);
                         }
                     }
-                } else if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)", t.getContent()) || t.isKey() || t.isSep()){
+                } else if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*|\\(|\\)", t.getContent()) || t.isKey() || t.isSep() || t.isCustFunc()){
                     flag = false;
                     /* 按照优先级进行处理 */
                     if (t.getContent().equals("(")) // 是"("，直接入栈
                         s.push(t);
-                    if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", t.getContent()) || t.isKey() || t.isSep()) {
+                    if (Pattern.matches("\\+|-|\\*|/|%|\\^|\\.\\^|\\./|\\.\\*", t.getContent()) || t.isKey() || t.isSep() || t.isCustFunc()) {
                         /*
                             是操作符：
                             while 栈非空
@@ -416,6 +605,9 @@ public class Parser {
                 }
             }
         }
+        // 栈中可能还有元素（比如传入一个if的条件，是没有EOL的）
+        while (!s.empty())
+            suffix_expr.add(s.pop());
 
         //test
         if (this.lexer != null)
@@ -453,7 +645,6 @@ public class Parser {
                     标识符要分情况处理：
                         --> 如果语句类型是eval，则不能出现字符串
                         --> 如果语句类型是other，则可以出现字符串，对字符串字面量同理
-
                  */
                 if (type == SentType.eval) {
                     if (!this.varPool.get(inst_t.getContent()).isString())
@@ -529,7 +720,7 @@ public class Parser {
                     }
                     optn_s.push(_t_res); // 计算结果压入栈中
                 }
-            } else if (inst_t.isKey()) {
+            } else if (inst_t.isKey() ||inst_t.isCustFunc()) {
                 if (has_comma) { // 有逗号，栈顶为ArrayList
                     if (!optn_s.empty()) {
                         if (optn_s.peek().getClass() == ArrayList.class) {
@@ -560,17 +751,29 @@ public class Parser {
                     出现多个返回值的情况，那么后缀表达式末尾的Token一定是一个函数
                  */
                 if (i != expr.size() - 1) {
-                    t_res = this.callFunc(inst_t, argv, 0)[0];
+                    if (inst_t.isKey())
+                        t_res = this.callFunc(inst_t, argv, 0)[0];
+                    else {
+                        Token[] temp = this.callCustomFunc(inst_t, argv);
+                        if (temp.length != 1) {
+                            String msg = "\n\t第" + line_idx + "行：函数" + inst_t.getContent() +"的返回值过多！";
+                            throw new SyntaxErrorException(msg);
+                        } else
+                            t_res = temp[0];
+                    }
                     argv.clear();
                     optn_s.push(t_res);
                 } else {
-                    String regexPat = "print"; // 待补充
+                    String regexPat = "print"; ///////////////////////////////////// 待补充
                     if (Pattern.matches(regexPat, inst_t.getContent())) {
                         returns_token = new Token[1];
                         returns_token[0] = argv.get(0);
                         return returns_token;
                     } else {
-                        returns_token = this.callFunc(inst_t, argv, returns_cnt);
+                        if (inst_t.isKey())
+                            returns_token = this.callFunc(inst_t, argv, returns_cnt);
+                        else
+                            returns_token = this.callCustomFunc(inst_t, argv);
                         return returns_token;
                     }
                 }
@@ -616,11 +819,36 @@ public class Parser {
                 if (end_cnt == end_need) {
                     flag = false;
                     func_expr.add(t);
-                    /* 把扫描到的函数放到custom_Func里面 */
+                    // 把扫描到的函数放到custom_Func里面
+                    /* 统计返回值个数 */
+                    int returns_cnt = 0; // 返回值个数
+                    StringBuffer returns_string = new StringBuffer();
+                    int pos = 1;
+                    while (!func_expr.get(pos).getContent().equals("=")) {
+                        // 处理缺少等号的情况
+                        if (func_expr.get(pos).isEOL()) {
+                            String msg = "\n\t第" + line + "行：自定义函数缺少\"=\"！";
+                            throw new SyntaxErrorException(msg);
+                        }
+                        returns_string.append(func_expr.get(pos++).getContent());
+                    }
+                    if (pos == 2) // 单返回值
+                        returns_cnt = 1;
+                    else { // 多返回值
+                        String regexPat = "\\[([a-zA-Z_][a-zA-Z_0-9]*)(,[\\s]*[a-zA-Z_][a-zA-Z_0-9]*)*\\]";
+                        if (!Pattern.matches(regexPat, returns_string)) {
+                            String msg = "\n\t第" + func_expr.get(0).getLine() + "行：" + "返回值格式错误！";
+                            throw new SyntaxErrorException(msg);
+                        } else {
+                            returns_string = returns_string.deleteCharAt(returns_string.length() - 1).deleteCharAt(0); // 去掉"["、"]"
+                            returns_cnt = returns_string.toString().split(",").length;
+                        }
+                    }
+
                     // 检查定义的函数名是否和内置函数名冲突
                     String name = null;
-                    if (!func_expr.get(3).isKey()) {
-                        name = func_expr.get(3).getContent();
+                    if (!func_expr.get(pos+1).isKey()) {
+                        name = func_expr.get(pos+1).getContent();
                     } else {
                         String msg = "\n\t第" + line + "行：" + func_expr.get(3).getContent() +"是内置函数，不能被定义为自定义函数！";
                         throw new SyntaxErrorException(msg);
@@ -630,7 +858,7 @@ public class Parser {
                     /* 统计参数个数 */
                     String argv_string = "";
                     int argc_size = 0;
-                    for(int i = 5; i < func_expr.size(); i++) {
+                    for(int i = pos + 3; i < func_expr.size(); i++) {
                         if (func_expr.get(i).getContent().equals(")")) {
                             if (func_expr.get(i+2).getLine() == line) { // ")"后面就不能有任何字符了，减1是为了去掉每行末尾的换行符
                                 String msg = "\n\t第" + line + "行：" + "自定义函数存在非法字符！";
@@ -657,7 +885,7 @@ public class Parser {
                         String msg = "\n\t第" + line + "行：" + "函数" + name + "已被定义！";
                         throw new SyntaxErrorException(msg);
                     } else {
-                        CustomFunc func = new CustomFunc(name, argc_size, func_expr);
+                        CustomFunc func = new CustomFunc(this, name, argc_size, returns_cnt, func_expr);
                         this.customFunc.put(inst_key, func);
                     }
 
@@ -697,6 +925,7 @@ public class Parser {
 
     /**
      * 获取变量值
+     *
      * @param t
      * @return
      */
@@ -706,9 +935,12 @@ public class Parser {
                 return this.lite_varPool.get(t.getContent()).getContent();
             else
                 return t.getContent();
-        } else if (t.isLiteMat()) {
+        } else if (t.isLiteMat())
             return this.lite_varPool.get(t.getContent()).getContent();
-        }
+        else if (t.isNum())
+            return t.getContent();
+        else if (t.isMat())
+            return t.getContent();
         else if (t.isIdtf()) {
             if (this.varPool.containsKey(t.getContent()))
                 return this.varPool.get(t.getContent()).getContent();
@@ -755,6 +987,26 @@ public class Parser {
                 returns_token = func.getResult();
         }
         return returns_token;
+    }
+
+    /**
+     * 调用自定义函数
+     * @param key 函数名
+     * @param argv 参数
+     * @return 计算结果
+     */
+    public Token[] callCustomFunc(Token key, List<Token> argv) {
+        String[] func_key = {key.getContent(), String.valueOf(argv.size())}; // 构造key
+        CustomFunc func = null;
+        for(String[] origin_key : this.customFunc.keySet()) {
+            if (Arrays.equals(origin_key, func_key)) {
+                func = this.customFunc.get(origin_key);
+                break;
+            }
+        }
+        if (func.init(argv))
+            func.run();
+        return func.getResult();
     }
 
     /**
@@ -944,6 +1196,47 @@ public class Parser {
         this.varPool.put(t.getContent(), new_t);
     }
 
+    /**
+     * 判断两个Token是否相等
+     * @param t1
+     * @param t2
+     * @return
+     */
+    public boolean equals(Token t1, Token t2) {
+        String string_regex = "\".*\""; // 字符串
+        String num_regex = "[+-]?\\d+(\\.\\d+)?"; // 数字
+        String mat_regex = "\\[(([+-]?\\d+(\\.\\d+)?)([\\s]*[,]?[\\s]*[+-]?\\d+(\\.\\d+)?)*)" +
+                "([\\s]*;[\\s]*([+-]?\\d+(\\.\\d+)?)([\\s]*[,]?[\\s]*[+-]?\\d+(\\.\\d+)?)*)*\\]"; // 矩阵
+        String content_1 = this.getVarValue(t1);
+        String content_2 = this.getVarValue(t2);
+
+        if (Pattern.matches(num_regex, content_1) && Pattern.matches(num_regex, content_2)) {
+            double var1 = Double.parseDouble(this.getVarValue(t1));
+            double var2 = Double.parseDouble(this.getVarValue(t2));
+            if (var1 == var2)
+                return true;
+            else
+                return false;
+        }
+        if (Pattern.matches(mat_regex, content_1) && Pattern.matches(mat_regex, content_2)) {
+            Matrix m1 = new Matrix(this.getVarValue(t1));
+            Matrix m2 = new Matrix(this.getVarValue(t2));
+            if (m1.equals(m2))
+                return true;
+            else
+                return false;
+        }
+        if (Pattern.matches(string_regex, content_1) && Pattern.matches(string_regex, content_2)) {
+            String str1 = this.getVarValue(t1);
+            String str2 = this.getVarValue(t2);
+            if (str1.equals(str2))
+                return true;
+            else
+                return false;
+        }
+        return false;
+    }
+
 
     // getter()
     public Lexer getLexer() {
@@ -956,9 +1249,5 @@ public class Parser {
 
     public Map<String, Token> getLite_varPool() {
         return lite_varPool;
-    }
-
-    public Map<String, Token> getT_varPool() {
-        return t_varPool;
     }
 }
