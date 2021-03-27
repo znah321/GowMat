@@ -17,7 +17,7 @@ public class Token {
 
     // 获取Token优先级
     public int priority() {
-        if (this.isKey())
+        if (this.isKey() || this.isCustFunc())
             return 1;
         else if (this.isSep())
             return 4;
