@@ -10,12 +10,14 @@ import java.util.regex.Pattern;
 
 public class testclass {
     public static void main(String[] args) {
-        String str = "M*3 = 99.0[6.0;6.0]\\\"Test\\\"";
         Lexer lexer = new Lexer("code");
         lexer.analyze();
         lexer.save_result();
         Parser parser = new Parser(lexer);
         parser.parse();
+
+
+        System.out.println(1|0);
 
         /*
         String str = "B = C([1:2:5],[2,3]) + [1,2,3;4,5,6;7,8,9].^2 + sum(A,1)";
