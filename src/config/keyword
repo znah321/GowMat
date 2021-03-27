@@ -2,7 +2,7 @@ nil
 input
 if
 else
-else if
+elseif
 end
 while
 for
