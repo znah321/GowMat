@@ -58,6 +58,14 @@ public class ParserFunc {
             String msg = "\n\t第" + argc.getLine() + "行：" + "print函数不需要返回值！";
             throw new SyntaxErrorException(msg);
         }
+        // print里面只有一个标识符，且为矩阵
+        if (argc.isIdtf()) {
+            if (this.parser.getVarPool().get(argc.getContent()).isMat()) {
+                new Matrix(this.parser.getVarValue(argc)).display();
+                return;
+            }
+        }
+
         String str = this.parser.getVarValue(argc).substring(1, this.parser.getVarValue(argc).length()-1);
         char[] _ch_res = str.toCharArray();
         String res = "";
@@ -111,6 +119,7 @@ public class ParserFunc {
                 parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             }
             if (mat.isLiteNum()) {
                 String name = parser.geneName();
@@ -118,6 +127,7 @@ public class ParserFunc {
                 parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             }
             // 矩阵只有一行或一列
             Matrix m = new Matrix(this.parser.getVarValue(mat));
@@ -127,6 +137,7 @@ public class ParserFunc {
                 this.parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             } else {
                 // 默认按行求和
                 String name = parser.geneName();
@@ -134,6 +145,7 @@ public class ParserFunc {
                 this.parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             }
         } else {
             if (!this.isNumerical(argv.get(1))) {
@@ -149,6 +161,7 @@ public class ParserFunc {
                 parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             }
             if (mat.isLiteNum()) {
                 String name = parser.geneName();
@@ -156,6 +169,7 @@ public class ParserFunc {
                 parser.getLite_varPool().put(name, t);
                 this.result = new Token[1];
                 this.result[0] = new Token(Type.num_literals, name, key.getLine());
+                return;
             }
 
             Matrix m = new Matrix(parser.getVarValue(mat));
